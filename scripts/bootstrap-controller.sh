@@ -3,6 +3,12 @@ set -euo pipefail
 
 source /tmp/bootstrap-vars.env 2>/dev/null || true
 
+SLURM_HOSTNAME="${SLURM_HOSTNAME:-ctrl1}"
+if [[ "$(hostname -s)" != "$SLURM_HOSTNAME" ]]; then
+  hostnamectl set-hostname "$SLURM_HOSTNAME"
+  grep -q "$SLURM_HOSTNAME" /etc/hosts || echo "127.0.1.1 $SLURM_HOSTNAME" >> /etc/hosts
+fi
+
 /opt/slurm-hybrid/install-slurm.sh
 
 # Munge key (primary generates; backup copies from ctrl1 manually or shared secret)
@@ -25,6 +31,12 @@ if [[ "${IS_PRIMARY:-false}" == "true" ]]; then
   mysql -e "GRANT ALL ON slurm_acct_db.* TO 'slurm'@'localhost';"
   mysql -e "FLUSH PRIVILEGES;"
 
+  systemctl enable --now slurmdbd
+  for i in $(seq 1 30); do
+    ss -tln 2>/dev/null | grep -q ':6819 ' && break
+    sleep 2
+  done
+
   sacctmgr -i create cluster name="${CLUSTER_NAME:-slurm-hybrid}" 2>/dev/null || true
 
   # cloud-nodes.json with live instance IDs from Terraform env
@@ -39,7 +51,6 @@ if [[ "${IS_PRIMARY:-false}" == "true" ]]; then
       }' > /etc/slurm/cloud-nodes.json
   fi
 
-  systemctl enable --now slurmdbd
   systemctl enable --now slurmctld
 else
   systemctl enable --now munge

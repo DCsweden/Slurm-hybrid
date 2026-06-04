@@ -30,7 +30,9 @@ resource "aws_instance" "login" {
   associate_public_ip_address = true
   user_data_replace_on_change = true
 
-  user_data = templatefile("${path.module}/../../templates/cloud-init-login.yaml", local.cloud_init_base)
+  user_data = templatefile("${path.module}/../../templates/cloud-init-login.yaml", merge(local.cloud_init_base, {
+    hostname = var.login_hostname
+  }))
 
   root_block_device {
     volume_size = 40
@@ -53,7 +55,9 @@ resource "aws_instance" "ctrl1" {
   iam_instance_profile        = aws_iam_instance_profile.controller.name
   user_data_replace_on_change = true
 
-  user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", local.cloud_init_base)
+  user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", merge(local.cloud_init_base, {
+    hostname = var.ctrl1_hostname
+  }))
 
   root_block_device {
     volume_size = 50
@@ -78,7 +82,9 @@ resource "aws_instance" "ctrl2" {
   iam_instance_profile        = aws_iam_instance_profile.controller.name
   user_data_replace_on_change = true
 
-  user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", local.cloud_init_base)
+  user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", merge(local.cloud_init_base, {
+    hostname = var.ctrl2_hostname
+  }))
 
   root_block_device {
     volume_size = 50
@@ -102,7 +108,9 @@ resource "aws_instance" "compute" {
   iam_instance_profile   = aws_iam_instance_profile.compute.name
   user_data_replace_on_change = true
 
-  user_data = templatefile("${path.module}/../../templates/cloud-init-compute.yaml", local.cloud_init_base)
+  user_data = templatefile("${path.module}/../../templates/cloud-init-compute.yaml", merge(local.cloud_init_base, {
+    hostname = var.compute_hostname
+  }))
 
   root_block_device {
     volume_size = 80

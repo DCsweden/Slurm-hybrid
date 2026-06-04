@@ -196,13 +196,17 @@ STAGING=\$(mktemp -d)
 trap 'rm -rf "\$STAGING"' EXIT
 tar xzf "\$TGZ" -C "\$STAGING"
 install -d -m 755 /etc/slurm /opt/slurm-hybrid /usr/sbin
-cp -a "\$STAGING/etc/slurm/." /etc/slurm/
-cp -a "\$STAGING/opt/slurm-hybrid/." /opt/slurm-hybrid/
-cp -a "\$STAGING/usr/sbin/." /usr/sbin/
+cp -r --no-preserve=ownership "\$STAGING/etc/slurm/." /etc/slurm/
+cp -r --no-preserve=ownership "\$STAGING/opt/slurm-hybrid/." /opt/slurm-hybrid/
+cp -r --no-preserve=ownership "\$STAGING/usr/sbin/." /usr/sbin/
 chown root:root / /etc /usr /opt
 chmod 755 / /etc /usr /opt
-chmod 600 /etc/slurm/slurmdbd.conf 2>/dev/null || true
+chown root:root /etc/slurm
+chmod 755 /etc/slurm
+chown root:root /etc/slurm/slurm.conf /etc/slurm/cgroup.conf 2>/dev/null || true
 chmod 644 /etc/slurm/slurm.conf /etc/slurm/cgroup.conf 2>/dev/null || true
+chown slurm:slurm /etc/slurm/slurmdbd.conf 2>/dev/null || true
+chmod 600 /etc/slurm/slurmdbd.conf 2>/dev/null || true
 REMOTE
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
   run_host "$ip" sudo rm -f "$tgz"
@@ -251,6 +255,7 @@ if [[ -n "${DB_PASSWORD:-}" ]]; then
   run_ctrl1 "sudo bash -s" <<REMOTE
 set -e
 export IS_PRIMARY=true
+export SLURM_HOSTNAME=ctrl1
 export DB_PASSWORD='${DB_PASSWORD//\'/\'\\\'\'}'
 export SLURM_VERSION=${SLURM_VERSION}
 export CLUSTER_NAME=${CLUSTER_NAME}
@@ -280,6 +285,7 @@ for ip in 10.0.1.12 10.0.1.10 10.0.2.10; do sync_slurm_binaries "$ip"; done
 echo "==> Bootstrap ctrl2"
 run_host 10.0.1.12 "sudo bash -s" <<REMOTE
 export IS_PRIMARY=false
+export SLURM_HOSTNAME=ctrl2
 export SLURM_VERSION=${SLURM_VERSION}
 bash /opt/slurm-hybrid/bootstrap-controller.sh 2>/dev/null || {
   sudo systemctl enable munge slurmctld

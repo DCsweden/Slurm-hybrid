@@ -16,5 +16,6 @@ packages:
   - munge
 
 runcmd:
-  - bash -lc 'grep -q "$(hostname)" /etc/hosts || echo "127.0.1.1 $(hostname)" >> /etc/hosts'
+  - bash -lc 'hostnamectl set-hostname ${hostname}'
+  - bash -lc 'grep -q "${hostname}" /etc/hosts || echo "127.0.1.1 ${hostname}" >> /etc/hosts'
   - bash -lc 'install -d -m 755 /opt/slurm-hybrid /etc/slurm'

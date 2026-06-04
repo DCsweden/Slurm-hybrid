@@ -50,12 +50,11 @@ After=munge.service mariadb.service network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 EnvironmentFile=-/etc/default/slurmctld
-ExecStart=/usr/local/sbin/slurmctld -f /etc/slurm/slurm.conf
-ExecReload=/bin/kill -HUP $MAINPID
-PIDFile=/var/run/slurmctld.pid
+ExecStart=/usr/local/sbin/slurmctld -f /etc/slurm/slurm.conf -D
 User=slurm
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
@@ -67,8 +66,10 @@ Description=Slurm DBD
 After=munge.service mariadb.service
 
 [Service]
-ExecStart=/usr/local/sbin/slurmdbd -f /etc/slurm/slurmdbd.conf
+Type=simple
+ExecStart=/usr/local/sbin/slurmdbd -D
 User=slurm
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
