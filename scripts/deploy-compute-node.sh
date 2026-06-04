@@ -1,5 +1,6 @@
 #!/bin/bash
 # Deploy Munge + Slurm to a compute node from packages on ctrl1 (same flow for AWS and GCP).
+# Both nodes are reached via ctrl1 SSH hop over the hybrid VPN (no IAP/gcloud required).
 # Usage: deploy-compute-node.sh aws <private-ip>  |  deploy-compute-node.sh gcp
 set -euo pipefail
 
@@ -10,9 +11,7 @@ CTRL1="slurmadmin@${CTRL1_IP}"
 CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
 MODE="${1:?usage: deploy-compute-node.sh aws|gcp [ip]}"
 TARGET_IP="${2:-}"
-GCP_PROJECT="${GCP_PROJECT:-dcprod}"
-GCP_ZONE="${GCP_ZONE:-europe-north2-a}"
-GCP_INSTANCE="${GCP_INSTANCE:-gcp-compute}"
+GCP_COMPUTE_IP="${GCP_COMPUTE_IP:-10.1.1.10}"
 SLURM_VERSION="${SLURM_VERSION:-24.05.3}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK=$(mktemp -d)
@@ -33,10 +32,25 @@ case "$MODE" in
   gcp)
     NODE_NAME="${GCP_COMPUTE_NODE_NAME:-gcp-compute}"
     CLOUD_PROVIDER=gcp
-    INSTANCE_ID="${GCP_INSTANCE}"
+    INSTANCE_ID="${GCP_INSTANCE:-gcp-compute}"
+    TARGET_IP="${GCP_COMPUTE_IP}"
     ;;
   *) echo "unknown mode: $MODE" >&2; exit 1 ;;
 esac
+
+wait_compute_ssh() {
+  echo "==> Wait for SSH to ${NODE_NAME} (${TARGET_IP}) via ctrl1"
+  for i in $(seq 1 36); do
+    if run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=5 slurmadmin@${TARGET_IP} echo ok" 2>/dev/null; then
+      echo "  ready"
+      return 0
+    fi
+    if (( i % 6 == 0 )); then echo "  still waiting (${i}/36) — VPN or startup?" >&2; fi
+    sleep 10
+  done
+  echo "Timeout: ctrl1 cannot SSH to ${TARGET_IP}" >&2
+  return 1
+}
 
 echo "==> Prepare packages on ctrl1"
 run_ctrl1 'bash -s' <<'REMOTE'
@@ -68,29 +82,17 @@ cp "$REPO_ROOT/scripts/compute-node-install.remote.sh" "$BUNDLE/install.sh"
 chmod +x "$BUNDLE/install.sh"
 tar czf "$WORK/compute-bundle.tgz" -C "$BUNDLE" .
 
-if [[ "$MODE" == aws ]]; then
-  echo "==> Deploy -> aws-compute (${TARGET_IP})"
-  "${SCP[@]}" "$WORK/compute-bundle.tgz" "${CTRL1}:/tmp/compute-bundle.tgz"
-  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/compute-bundle.tgz slurmadmin@${TARGET_IP}:/tmp/"
-  run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@${TARGET_IP}" <<REMOTE
+wait_compute_ssh
+
+echo "==> Deploy -> ${NODE_NAME} (${TARGET_IP})"
+"${SCP[@]}" "$WORK/compute-bundle.tgz" "${CTRL1}:/tmp/compute-bundle.tgz"
+run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/compute-bundle.tgz slurmadmin@${TARGET_IP}:/tmp/"
+run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@${TARGET_IP}" <<REMOTE
 set -euo pipefail
 sudo rm -rf /tmp/slurm-compute-bundle && sudo mkdir -p /tmp/slurm-compute-bundle
 sudo tar xzf /tmp/compute-bundle.tgz -C /tmp/slurm-compute-bundle
 export NODE_NAME='${NODE_NAME}' CLOUD_PROVIDER='${CLOUD_PROVIDER}' INSTANCE_ID='${INSTANCE_ID}' SLURM_VERSION='${SLURM_VERSION}'
 sudo -E bash /tmp/slurm-compute-bundle/install.sh
 REMOTE
-
-elif [[ "$MODE" == gcp ]]; then
-  echo "==> Deploy -> gcp-compute (${GCP_INSTANCE})"
-  gcloud compute scp --project="$GCP_PROJECT" --zone="$GCP_ZONE" --tunnel-through-iap \
-    "$WORK/compute-bundle.tgz" "${GCP_INSTANCE}:/tmp/compute-bundle.tgz"
-  gcloud compute ssh "$GCP_INSTANCE" --project="$GCP_PROJECT" --zone="$GCP_ZONE" \
-    --tunnel-through-iap --command="
-set -euo pipefail
-sudo rm -rf /tmp/slurm-compute-bundle && sudo mkdir -p /tmp/slurm-compute-bundle
-sudo tar xzf /tmp/compute-bundle.tgz -C /tmp/slurm-compute-bundle
-export NODE_NAME='${NODE_NAME}' CLOUD_PROVIDER='${CLOUD_PROVIDER}' INSTANCE_ID='${INSTANCE_ID}' SLURM_VERSION='${SLURM_VERSION}'
-sudo -E bash /tmp/slurm-compute-bundle/install.sh"
-fi
 
 echo "  ${NODE_NAME} OK"
