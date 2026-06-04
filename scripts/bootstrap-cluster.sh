@@ -42,10 +42,18 @@ run_ctrl1() {
   "${SSH[@]}" "$CTRL1" "$@"
 }
 
+is_private_ip() {
+  [[ "$1" =~ ^10\. ]] || [[ "$1" =~ ^192\.168\. ]] || [[ "$1" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+}
+
 run_host() {
   local ip="$1"
   shift
-  "${SSH[@]}" "slurmadmin@${ip}" "$@"
+  if is_private_ip "$ip"; then
+    run_ctrl1 ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=30 "slurmadmin@${ip}" "$@"
+  else
+    "${SSH[@]}" "slurmadmin@${ip}" "$@"
+  fi
 }
 
 echo "==> Wait for nodes"

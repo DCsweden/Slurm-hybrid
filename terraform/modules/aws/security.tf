@@ -20,6 +20,14 @@ resource "aws_security_group" "slurm" {
   }
 
   ingress {
+    description = "SSH within AWS VPC (ctrl1 to compute, etc.)"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
     description = "Slurmctld"
     from_port   = 6817
     to_port     = 6817

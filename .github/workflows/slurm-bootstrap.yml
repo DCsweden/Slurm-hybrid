@@ -70,6 +70,7 @@ jobs:
           echo "ctrl2=$(terraform output -raw ctrl2_public_ip)" >> "$GITHUB_OUTPUT"
           echo "login=$(terraform output -raw login_public_ip)" >> "$GITHUB_OUTPUT"
           echo "aws_compute_id=$(terraform output -raw aws_compute_instance_id)" >> "$GITHUB_OUTPUT"
+          echo "aws_compute_ip=$(terraform output -raw aws_compute_private_ip)" >> "$GITHUB_OUTPUT"
           echo "gcp_compute_ip=$(terraform output -raw gcp_compute_private_ip)" >> "$GITHUB_OUTPUT"
           terraform output -raw power_save_gcp_key > /tmp/gcp-sa.json
 
@@ -97,6 +98,7 @@ jobs:
           CTRL2_IP: ${{ steps.tf.outputs.ctrl2 }}
           LOGIN_IP: ${{ steps.tf.outputs.login }}
           AWS_COMPUTE_INSTANCE_ID: ${{ steps.tf.outputs.aws_compute_id }}
+          AWS_COMPUTE_IP: ${{ steps.tf.outputs.aws_compute_ip }}
           GCP_COMPUTE_IP: ${{ steps.tf.outputs.gcp_compute_ip }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           GCP_SA_KEY_FILE: /tmp/gcp-sa.json

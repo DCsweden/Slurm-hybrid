@@ -23,6 +23,10 @@ output "aws_compute_instance_id" {
   value = module.aws.aws_compute_instance_id
 }
 
+output "aws_compute_private_ip" {
+  value = module.aws.aws_compute_private_ip
+}
+
 output "gcp_compute_instance_id" {
   value = module.gcp.compute_instance_id
 }

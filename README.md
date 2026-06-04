@@ -126,6 +126,30 @@ terraform init -backend-config=backend.hcl.example
 - SSH-nyckel (publik) för användaren `slurmadmin`
 - API aktiverade på GCP: Compute Engine API
 
+### SSH-nycklar (viktigt)
+
+| Var | Nyckel | Användare |
+|-----|--------|-----------|
+| Din laptop / GitHub Actions | `~/.ssh/slurm_deploy` (privat) + secret `SSH_PUBLIC_KEY` / `SSH_PRIVATE_KEY` | `slurmadmin` på login, ctrl1, ctrl2 |
+| AWS EC2 `key_name` (samma publika nyckel via Terraform) | samma par | **`ubuntu`** på alla AWS-VM:ar (standard för Ubuntu AMI) |
+| Inre hopp från ctrl1 | `~/.ssh/id_cluster` på ctrl1 (= samma privata nyckel som deploy) | `slurmadmin@10.0.x.x` |
+
+`slurmadmin` får sin publika nyckel via **cloud-init** (`ssh_authorized_keys` + `authorized_keys`-fil). Om cloud-init misslyckats på t.ex. compute (`10.0.2.10`) får du `Permission denied (publickey)` trots att `ubuntu@10.0.2.10` fungerar med samma `-i`-nyckel.
+
+**Åtgärd utan omprovisionering** (från laptop, via ctrl1):
+
+```bash
+export CTRL1_IP=$(cd terraform && terraform output -raw ctrl1_public_ip)
+export SSH_KEY=~/.ssh/slurm_deploy
+bash scripts/repair-slurmadmin-ssh.sh
+```
+
+**Verifiera från ctrl1:**
+
+```bash
+ssh -i ~/.ssh/id_cluster slurmadmin@10.0.2.10 hostname
+```
+
 ## Snabbstart
 
 ```bash
