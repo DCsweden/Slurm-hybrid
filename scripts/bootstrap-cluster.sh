@@ -35,10 +35,14 @@ LOGIN_SSH_IP=""
 
 try_ssh_ip() {
   local ip="$1"
+  local track_login="${2:-false}"
   for user in slurmadmin ubuntu; do
     if "${SSH[@]}" "${user}@${ip}" 'echo ready' 2>/dev/null; then
-      LOGIN_SSH_USER="$user"
-      LOGIN_SSH_IP="$ip"
+      if [[ "$track_login" == true ]]; then
+        LOGIN_SSH_USER="$user"
+        LOGIN_SSH_IP="$ip"
+        LOGIN_REACHABLE=true
+      fi
       return 0
     fi
   done
@@ -50,8 +54,8 @@ wait_ssh() {
   local label="${2:-slurmadmin@${ip}}"
   echo "Waiting for SSH: $label"
   for i in $(seq 1 60); do
-    if try_ssh_ip "$ip"; then
-      echo "  ready (${LOGIN_SSH_USER}@${ip})"
+    if try_ssh_ip "$ip" false; then
+      echo "  ready (slurmadmin@${ip})"
       return 0
     fi
     if (( i % 6 == 0 )); then echo "  still waiting (${i}/60)..."; fi
@@ -66,9 +70,8 @@ wait_ssh_optional() {
   local label="${2:-slurmadmin@${ip}}"
   echo "Waiting for SSH (optional): $label"
   for i in $(seq 1 18); do
-    if try_ssh_ip "$ip"; then
-      LOGIN_REACHABLE=true
-      echo "  ready (${LOGIN_SSH_USER}@${ip})"
+    if try_ssh_ip "$ip" true; then
+      echo "  ready (${LOGIN_SSH_USER}@${LOGIN_SSH_IP})"
       return 0
     fi
     if (( i % 3 == 0 )); then echo "  still waiting (${i}/18)..."; fi
@@ -83,7 +86,7 @@ run_login() {
     echo "SKIP login: not reachable" >&2
     return 0
   fi
-  "${SSH[@]}" "${LOGIN_SSH_USER}@${LOGIN_SSH_IP}" "$@"
+  "${SSH[@]}" "${LOGIN_SSH_USER}@${LOGIN_IP}" "$@"
 }
 
 echo "==> Wait for controllers"
@@ -101,7 +104,7 @@ is_private_ip() {
 run_host() {
   local ip="$1"
   shift
-  if [[ "$ip" == "$LOGIN_IP" || "$ip" == "10.0.1.10" ]] && [[ "$LOGIN_REACHABLE" == true ]]; then
+  if [[ "$ip" == "$LOGIN_IP" ]] && [[ "$LOGIN_REACHABLE" == true ]]; then
     run_login "$@"
     return $?
   fi
@@ -122,7 +125,7 @@ run_ctrl1 'chmod 600 ~/.ssh/id_cluster'
 echo "==> Wait for login (optional — may need new instance from Terraform)"
 wait_ssh_optional "$LOGIN_IP" "$LOGIN"
 if [[ "$LOGIN_REACHABLE" != true ]]; then
-  try_ssh_ip "10.0.1.10" && LOGIN_REACHABLE=true && echo "  login reachable via private 10.0.1.10"
+  try_ssh_ip "10.0.1.10" true && echo "  login reachable via private 10.0.1.10"
 fi
 
 echo "==> Sync Slurm configs and scripts from repo"
@@ -152,7 +155,9 @@ sync_assets() {
   else
     "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "slurmadmin@${ip}:/tmp/"
   fi
-  run_host "$ip" 'sudo tar xzf /tmp/slurm-hybrid-assets.tgz -C / && sudo chmod +x /opt/slurm-hybrid/*.sh /usr/sbin/slurm_* 2>/dev/null || true && rm -f /tmp/slurm-hybrid-assets.tgz'
+  run_host "$ip" sudo tar xzf /tmp/slurm-hybrid-assets.tgz -C /
+  run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
+  run_host "$ip" sudo rm -f /tmp/slurm-hybrid-assets.tgz
 }
 
 for ip in "$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP"; do
@@ -236,7 +241,7 @@ REMOTE
 
 echo "==> Bootstrap login (client)"
 if [[ "$LOGIN_REACHABLE" == true ]]; then
-  run_host "${LOGIN_SSH_IP:-$LOGIN_IP}" "sudo bash -s" <<REMOTE
+  run_host "${LOGIN_IP}" "sudo bash -s" <<REMOTE
 export SLURM_VERSION=${SLURM_VERSION}
 bash /opt/slurm-hybrid/bootstrap-login.sh 2>/dev/null || true
 sudo systemctl enable munge
