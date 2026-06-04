@@ -45,17 +45,20 @@ flowchart TB
 | AWS | `eu-north-1` (Stockholm) | automatisk AZ |
 | GCP | `europe-north2` (Stockholm) | `europe-north2-a` |
 
-## GitHub Actions
+## GitHub Actions (endast workflow — ingen manuell deploy)
 
-Två workflows under `.github/workflows/`:
+All deploy sker via GitHub Actions. **Push till `main`** startar automatiskt:
 
-| Workflow | Fil | Syfte |
-|----------|-----|--------|
-| **Terraform Apply** | `terraform-apply.yml` | Skapar infrastruktur + jobb **bootstrap-slurm** (Munge, Slurm build, slurmctld/slurmd) |
-| **Slurm Bootstrap** | `slurm-bootstrap.yml` | Endast bootstrap (om Apply redan körts) |
-| **Terraform Destroy** | `terraform-destroy.yml` | Raderar all infrastruktur (kräver `confirm_destroy=destroy`) |
+1. **Terraform Apply** — plan + apply
+2. **bootstrap-slurm** — SSH-nycklar, Munge, Slurm-build, slurmctld/slurmd på alla noder (~60–90 min)
 
-Apply körs vid `workflow_dispatch` och push till `main`. Efter lyckad Apply startar **bootstrap-slurm** automatiskt (~60–90 min, bygger Slurm på ctrl1 och synkar till övriga noder). Destroy körs **endast manuellt** med bekräftelse.
+| Workflow | Fil | När |
+|----------|-----|-----|
+| **Terraform Apply** | `terraform-apply.yml` | Varje push till `main` |
+| **Slurm Bootstrap (retry only)** | `slurm-bootstrap.yml` | Endast om bootstrap behöver köras om (Actions → Run workflow) |
+| **Terraform Destroy** | `terraform-destroy.yml` | Endast med `confirm_destroy=destroy` |
+
+Ingen lokal `terraform apply`, ingen manuell SSH-bootstrap och ingen manuell Munge-synk krävs — allt sker i CI.
 
 ### Förberedelse (engång)
 
@@ -106,17 +109,15 @@ Apply körs vid `workflow_dispatch` och push till `main`. Efter lyckad Apply sta
 
 Workflows kräver `permissions: id-token: write` (redan satt) så GitHub kan utfärda OIDC-token till AWS/GCP.
 
-Lokal init med samma backend:
+### Deploy
 
 ```bash
-cd terraform
-terraform init -backend-config=backend.hcl.example
+git push origin main
 ```
 
-### Köra från GitHub
+Följ körningen under **Actions → Terraform Apply (create infra)**. När båda jobben (apply + bootstrap-slurm) är gröna är klustret redo.
 
-- **Actions → Terraform Apply (create infra) → Run workflow**
-- **Actions → Terraform Destroy → Run workflow** och skriv `destroy` i bekräftelsefältet
+IP-adresser och lösenord: se workflow-sammanfattningen eller Terraform outputs i apply-jobbet.
 
 ## Förutsättningar
 
@@ -134,17 +135,9 @@ terraform init -backend-config=backend.hcl.example
 | AWS EC2 `key_name` (samma publika nyckel via Terraform) | samma par | **`ubuntu`** på alla AWS-VM:ar (standard för Ubuntu AMI) |
 | Inre hopp från ctrl1 | `~/.ssh/id_cluster` på ctrl1 (= samma privata nyckel som deploy) | `slurmadmin@10.0.x.x` |
 
-`slurmadmin` får sin publika nyckel via **cloud-init** (`ssh_authorized_keys` + `authorized_keys`-fil). Om cloud-init misslyckats på t.ex. compute (`10.0.2.10`) får du `Permission denied (publickey)` trots att `ubuntu@10.0.2.10` fungerar med samma `-i`-nyckel.
+`slurmadmin` får sin publika nyckel via **cloud-init**. Bootstrap-jobbet kör dessutom `repair-slurmadmin-ssh.sh` och synkar `id_cluster` på ctrl1 för interna hopp (`10.0.x.x`).
 
-**Åtgärd utan omprovisionering** (från laptop, via ctrl1):
-
-```bash
-export CTRL1_IP=$(cd terraform && terraform output -raw ctrl1_public_ip)
-export SSH_KEY=~/.ssh/slurm_deploy
-bash scripts/repair-slurmadmin-ssh.sh
-```
-
-**Verifiera från ctrl1:**
+Om du behöver felsöka SSH manuellt från ctrl1:
 
 ```bash
 ssh -i ~/.ssh/id_cluster slurmadmin@10.0.2.10 hostname
@@ -153,69 +146,39 @@ ssh -i ~/.ssh/id_cluster slurmadmin@10.0.2.10 hostname
 ## Snabbstart
 
 ```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Redigera: gcp_project_id, ssh_public_key
-
-terraform init -backend-config=backend.hcl.example
-terraform plan
-terraform apply
+git clone https://github.com/DCsweden/Slurm-hybrid.git
+cd Slurm-hybrid
+# Konfigurera GitHub secrets/vars enligt avsnittet ovan (engång)
+git push origin main
 ```
 
-Efter `apply`:
+### Efter lyckad workflow
 
-```bash
-terraform output -json db_password
-terraform output login_ssh
-```
-
-### Post-deploy (obligatoriskt)
-
-1. **Munge-nyckel** — genereras på `ctrl1`, kopiera till alla noder:
+1. Hämta login-IP från Actions-sammanfattningen eller Terraform outputs.
+2. Verifiera kluster:
 
    ```bash
-   ssh slurmadmin@$(terraform output -raw login_public_ip)  # hop via ctrl1
-   # På ctrl1:
-   sudo scp /etc/munge/munge.key slurmadmin@login:/tmp/
-   # Upprepa för ctrl2, aws-compute; för gcp-compute via VPN IP 10.1.1.10
-   ```
-
-2. **GCP credentials på controllers** (för resume/suspend av `gcp-compute`):
-
-   ```bash
-   terraform output -raw power_save_gcp_key > gcp-sa.json
-   scp gcp-sa.json slurmadmin@<ctrl1>:/tmp/
-   ssh slurmadmin@<ctrl1> 'sudo mv /tmp/gcp-sa.json /etc/slurm/gcp-sa.json && sudo chmod 600 /etc/slurm/gcp-sa.json'
-   sudo gcloud auth activate-service-account --key-file=/etc/slurm/gcp-sa.json
-   ```
-
-3. **Verifiera kluster:**
-
-   ```bash
-   ssh slurmadmin@<login>
+   ssh -i ~/.ssh/slurm_deploy slurmadmin@<login-ip>
    sinfo
    scontrol show nodes aws-compute,gcp-compute
    ```
 
-4. **Testa power save:**
-
-   ```bash
-   # Manuellt power down (stänger VM)
-   sudo scontrol power down aws-compute,gcp-compute
-   sinfo   # POWERED_DOWN / CLOUD
-
-   # Power up (startar VM, väntar ResumeTimeout)
-   sudo scontrol power up aws-compute,gcp-compute
-   ```
-
-   Automatiskt: lämna nod IDLE i > `SuspendTime` (300 s) i partition `cloud`.
-
-5. **Testjobb:**
+3. Testjobb:
 
    ```bash
    sbatch -p hybrid --wrap='hostname && sleep 10'
    squeue
    ```
+
+4. Testa power save (valfritt, från login):
+
+   ```bash
+   sudo scontrol power down aws-compute,gcp-compute
+   sinfo
+   sudo scontrol power up aws-compute,gcp-compute
+   ```
+
+   Automatiskt: nod IDLE i > `SuspendTime` (300 s) i partition `cloud`.
 
 ## Terraform-layout
 
@@ -263,7 +226,7 @@ aws ec2 describe-vpn-connections --filters Name=tag:Name,Values=slurm-hybrid-vpn
 gcloud compute vpn-tunnels list --regions=europe-north2
 ```
 
-Om tunnel inte går upp vid första `apply`, kör `terraform apply` igen efter att båda sidors IP-adresser stabiliserats (vanligt vid cross-cloud VPN).
+Om tunnel inte går upp vid första apply, pusha igen till `main` så körs workflow om (vanligt vid cross-cloud VPN).
 
 ## Säkerhet
 

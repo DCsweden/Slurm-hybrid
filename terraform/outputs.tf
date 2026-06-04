@@ -57,8 +57,7 @@ output "power_save_gcp_key" {
 
 output "post_deploy_notes" {
   value = <<-EOT
-    Slurm bootstrap runs automatically via GitHub Actions (job bootstrap-slurm after terraform apply).
-    Manual only if workflow skipped: bash scripts/bootstrap-cluster.sh with SSH_KEY and node IPs from terraform output.
+    Slurm bootstrap runs automatically via GitHub Actions (job bootstrap-slurm after terraform apply on push to main).
     SSH login: ssh slurmadmin@${module.aws.login_public_ip}
     Verify VPN: ping ${module.gcp.compute_private_ip} from ctrl1
   EOT

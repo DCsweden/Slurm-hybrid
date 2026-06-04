@@ -1,10 +1,10 @@
-name: Slurm Bootstrap (install and start daemons)
+name: Slurm Bootstrap (retry only)
+
+# Normal flow: bootstrap-slurm job in terraform-apply.yml after Apply.
+# Use workflow_dispatch only to retry bootstrap without re-running Terraform.
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Terraform Apply (create infra)"]
-    types: [completed]
 
 permissions:
   contents: read
@@ -21,7 +21,6 @@ jobs:
     name: Install Slurm and start services
     runs-on: ubuntu-latest
     environment: production
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 120
     concurrency:
       group: slurm-bootstrap
@@ -103,7 +102,7 @@ jobs:
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           GCP_SA_KEY_FILE: /tmp/gcp-sa.json
         run: |
-          chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh
+          chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh scripts/repair-slurmadmin-ssh.sh
           set -o pipefail
           bash scripts/bootstrap-cluster.sh 2>&1 | tee bootstrap.log
 
