@@ -35,12 +35,12 @@ resource "aws_vpn_connection_route" "gcp_cidr" {
 }
 
 resource "google_compute_vpn_tunnel" "aws_tunnel1" {
-  name          = "${var.project_name}-aws-tunnel1"
-  region        = var.gcp_region
-  vpn_gateway   = module.gcp.vpn_gateway_self_link
-  peer_ip       = aws_vpn_connection.gcp.tunnel1_address
-  shared_secret = module.aws.vpn_preshared_key
-  ike_version   = 2
+  name               = "${var.project_name}-aws-tunnel1"
+  region             = var.gcp_region
+  target_vpn_gateway = module.gcp.vpn_gateway_self_link
+  peer_ip            = aws_vpn_connection.gcp.tunnel1_address
+  shared_secret      = module.aws.vpn_preshared_key
+  ike_version        = 2
 
   depends_on = [
     aws_vpn_connection.gcp,
