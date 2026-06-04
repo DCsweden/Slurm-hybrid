@@ -80,7 +80,7 @@ Apply körs vid `workflow_dispatch` och push till `main` (terraform-relaterade s
 
 3. **Environments** (rekommenderat): skapa `production` och `production-destroy` med godkännare på destroy.
 
-4. **Variabel** (valfritt): `TF_VAR_allowed_ssh_cidr` — begränsa SSH till er IP.
+4. **Repository variable** (valfritt): `ALLOWED_SSH_CIDR` — begränsa SSH till er IP (annars Terraform-default).
 
 Lokal init med samma backend:
 

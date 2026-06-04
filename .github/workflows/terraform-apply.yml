@@ -71,20 +71,18 @@ jobs:
       - name: Terraform Plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         env:
-          TF_VAR_project_name: ${{ vars.TF_VAR_project_name || 'slurm-hybrid' }}
           TF_VAR_gcp_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-          TF_VAR_allowed_ssh_cidr: ${{ vars.TF_VAR_allowed_ssh_cidr || '0.0.0.0/0' }}
+          TF_VAR_allowed_ssh_cidr: ${{ vars.ALLOWED_SSH_CIDR }}
           TF_VAR_db_password: ${{ secrets.SLURM_DB_PASSWORD }}
         run: terraform plan -input=false -out=tfplan
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_WORKING_DIR }}
         env:
-          TF_VAR_project_name: ${{ vars.TF_VAR_project_name || 'slurm-hybrid' }}
           TF_VAR_gcp_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-          TF_VAR_allowed_ssh_cidr: ${{ vars.TF_VAR_allowed_ssh_cidr || '0.0.0.0/0' }}
+          TF_VAR_allowed_ssh_cidr: ${{ vars.ALLOWED_SSH_CIDR }}
           TF_VAR_db_password: ${{ secrets.SLURM_DB_PASSWORD }}
         run: terraform apply -input=false -auto-approve tfplan
 
