@@ -14,14 +14,14 @@ resource "random_password" "db" {
 }
 
 locals {
-  cluster_name = var.project_name
-  db_password  = var.db_password != "" ? var.db_password : random_password.db[0].result
-  allowed_ssh_cidr = var.allowed_ssh_cidr != "" ? var.allowed_ssh_cidr : "0.0.0.0/0"
+  cluster_name       = var.project_name
+  db_password        = var.db_password != "" ? var.db_password : random_password.db[0].result
+  allowed_ssh_cidr   = var.allowed_ssh_cidr != "" ? var.allowed_ssh_cidr : "0.0.0.0/0"
   github_ci_sa_email = var.github_ci_service_account_email != "" ? var.github_ci_service_account_email : "github-slurm-hybrid-ci@${var.gcp_project_id}.iam.gserviceaccount.com"
 
-  login_hostname     = "login"
-  ctrl1_hostname     = "ctrl1"
-  ctrl2_hostname     = "ctrl2"
+  login_hostname       = "login"
+  ctrl1_hostname       = "ctrl1"
+  ctrl2_hostname       = "ctrl2"
   aws_compute_hostname = "aws-compute"
   gcp_compute_hostname = "gcp-compute"
 }
@@ -54,16 +54,18 @@ module "aws" {
 module "gcp" {
   source = "./modules/gcp"
 
-  project_id            = var.gcp_project_id
-  project_name          = var.project_name
-  cluster_name          = local.cluster_name
-  region                = var.gcp_region
-  zone                  = var.gcp_zone
-  vpc_cidr              = var.gcp_vpc_cidr
-  aws_vpc_cidr          = var.aws_vpc_cidr
-  ssh_public_key        = var.ssh_public_key
-  slurm_version         = var.slurm_version
-  instance_type_compute = var.instance_type_gcp_compute
+  project_id                      = var.gcp_project_id
+  project_name                    = var.project_name
+  cluster_name                    = local.cluster_name
+  region                          = var.gcp_region
+  zone                            = var.gcp_zone
+  vpc_cidr                        = var.gcp_vpc_cidr
+  aws_vpc_cidr                    = var.aws_vpc_cidr
+  ssh_public_key                  = var.ssh_public_key
+  slurm_version                   = var.slurm_version
+  instance_type_compute           = var.instance_type_gcp_compute
   compute_hostname                = local.gcp_compute_hostname
   github_ci_service_account_email = local.github_ci_sa_email
+  aws_vpn_peer_ip                 = aws_vpn_connection.gcp.tunnel1_address
+  vpn_shared_secret               = module.aws.vpn_preshared_key
 }

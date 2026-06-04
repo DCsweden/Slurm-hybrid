@@ -28,6 +28,14 @@ resource "aws_security_group" "slurm" {
   }
 
   ingress {
+    description = "ICMP from peer cloud (VPN health checks)"
+    from_port   = -1
+    to_port     = -1
+    protocol    = "icmp"
+    cidr_blocks = [var.gcp_vpc_cidr]
+  }
+
+  ingress {
     description = "Slurmctld"
     from_port   = 6817
     to_port     = 6817

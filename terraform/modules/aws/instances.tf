@@ -99,13 +99,13 @@ resource "aws_instance" "ctrl2" {
 }
 
 resource "aws_instance" "compute" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type_compute
-  subnet_id              = aws_subnet.compute.id
-  vpc_security_group_ids = [aws_security_group.slurm.id]
-  key_name               = aws_key_pair.main.key_name
-  private_ip             = var.compute_private_ip
-  iam_instance_profile   = aws_iam_instance_profile.compute.name
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type_compute
+  subnet_id                   = aws_subnet.compute.id
+  vpc_security_group_ids      = [aws_security_group.slurm.id]
+  key_name                    = aws_key_pair.main.key_name
+  private_ip                  = var.compute_private_ip
+  iam_instance_profile        = aws_iam_instance_profile.compute.name
   user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/../../templates/cloud-init-compute.yaml", merge(local.cloud_init_base, {
@@ -117,8 +117,8 @@ resource "aws_instance" "compute" {
   }
 
   tags = merge(local.common_tags, {
-    Name = var.compute_hostname
-    Role = "compute"
+    Name  = var.compute_hostname
+    Role  = "compute"
     Cloud = "aws"
   })
 }

@@ -64,7 +64,7 @@ resource "google_compute_forwarding_rule" "fr_esp" {
   name        = "${var.project_name}-fr-esp"
   region      = var.region
   ip_protocol = "ESP"
-  ip_address    = google_compute_address.vpn.address
+  ip_address  = google_compute_address.vpn.address
   target      = google_compute_vpn_gateway.main.id
 }
 
@@ -73,7 +73,7 @@ resource "google_compute_forwarding_rule" "fr_udp500" {
   region      = var.region
   ip_protocol = "UDP"
   port_range  = "500"
-  ip_address    = google_compute_address.vpn.address
+  ip_address  = google_compute_address.vpn.address
   target      = google_compute_vpn_gateway.main.id
 }
 
@@ -82,6 +82,6 @@ resource "google_compute_forwarding_rule" "fr_udp4500" {
   region      = var.region
   ip_protocol = "UDP"
   port_range  = "4500"
-  ip_address    = google_compute_address.vpn.address
+  ip_address  = google_compute_address.vpn.address
   target      = google_compute_vpn_gateway.main.id
 }

@@ -23,8 +23,8 @@ resource "google_compute_instance" "compute" {
   }
 
   metadata = {
-    ssh-keys         = "slurmadmin:${var.ssh_public_key}"
-    enable-oslogin   = "FALSE"
+    ssh-keys               = "slurmadmin:${var.ssh_public_key}"
+    enable-oslogin         = "FALSE"
     block-project-ssh-keys = "false"
   }
 

@@ -21,3 +21,16 @@ variable "github_ci_service_account_email" {
   default     = ""
 }
 
+variable "aws_vpn_peer_ip" {
+  description = "AWS VPN tunnel outside IP (tunnel1_address)"
+  type        = string
+  default     = ""
+}
+
+variable "vpn_shared_secret" {
+  description = "IPsec pre-shared key (same as AWS side)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
