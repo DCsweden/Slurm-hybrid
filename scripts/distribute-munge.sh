@@ -21,18 +21,25 @@ install_munge_offline() {
   run_host "$ip" 'sudo dpkg -i /tmp/libmunge2*.deb /tmp/munge*.deb'
 }
 
+run_ctrl1() {
+  ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" "$@"
+}
+
+is_private_ip() {
+  [[ "$1" =~ ^10\. ]] || [[ "$1" =~ ^192\.168\. ]] || [[ "$1" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+}
+
 run_host() {
   local ip="$1"
   shift
   if [[ "$ip" == "$GCP_COMPUTE_IP" ]]; then
     return 1
   fi
-  ssh -i "$KEY" -o StrictHostKeyChecking=no -o "ProxyJump=${CTRL1}" "slurmadmin@${ip}" "$@" 2>/dev/null || \
+  if is_private_ip "$ip"; then
+    run_ctrl1 ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=30 "slurmadmin@${ip}" "$@"
+  else
     ssh -i "$KEY" -o StrictHostKeyChecking=no "slurmadmin@${ip}" "$@"
-}
-
-run_ctrl1() {
-  ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" "$@"
+  fi
 }
 
 echo "==> Prepare munge debs on ctrl1 (for offline nodes)"

@@ -26,7 +26,7 @@ install_key_ubuntu() {
   local ip="$1"
   local pub_line
   pub_line=$(head -1 "$PUB")
-  "${SSH[@]}" "$CTRL1" "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} bash -s" <<REMOTE
+  "${SSH[@]}" "$CTRL1" "ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} bash -s" <<REMOTE || return 1
 set -e
 PUB_LINE='${pub_line//\'/\'\\\'\'}'
 install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh

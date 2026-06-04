@@ -64,6 +64,10 @@ run_ctrl1 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
 "${SCP[@]}" "$KEY" "${CTRL1}:.ssh/id_cluster"
 run_ctrl1 'chmod 600 ~/.ssh/id_cluster'
 
+echo "==> Ensure slurmadmin keys on private nodes"
+export SSH_KEY="$KEY" CTRL1_IP
+PRIVATE_IPS="10.0.1.10 10.0.1.12 ${AWS_COMPUTE_IP}" bash "$(dirname "$0")/repair-slurmadmin-ssh.sh" || true
+
 echo "==> Munge: install packages and sync key"
 export SSH_KEY="$KEY" CTRL1_IP LOGIN_IP CTRL2_IP AWS_COMPUTE_IP GCP_COMPUTE_IP
 bash "$(dirname "$0")/distribute-munge.sh"
