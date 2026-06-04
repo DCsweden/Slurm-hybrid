@@ -53,6 +53,7 @@ run_ctrl1 'cd /tmp && apt-get download -qq libmunge2 munge 2>/dev/null || true'
 install_munge_host() {
   local ip="$1"
   echo "  munge @ $ip"
+  run_host "$ip" 'sudo chown root:root / /etc /usr /opt 2>/dev/null; sudo chmod 755 / /etc /usr /opt 2>/dev/null; true'
   if ! run_host "$ip" 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge' 2>/dev/null; then
     install_munge_offline "$ip" || true
   fi
@@ -65,7 +66,8 @@ for ip in "${ALL_IPS[@]}"; do
 done
 
 echo "==> Munge key on ctrl1"
-run_ctrl1 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge
+run_ctrl1 'sudo chown root:root / /etc /usr /opt 2>/dev/null; sudo chmod 755 / /etc /usr /opt 2>/dev/null; true
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge
 if [[ ! -f /etc/munge/munge.key ]]; then
   sudo create-munge-key 2>/dev/null || sudo dd if=/dev/urandom bs=1 count=1024 of=/etc/munge/munge.key status=none
   sudo chown munge:munge /etc/munge/munge.key
