@@ -1,7 +1,7 @@
 resource "google_compute_network" "main" {
   name                    = "${var.project_name}-gcp-vpc"
   auto_create_subnetworks = false
-  routing_mode            = "REGIONAL"
+  routing_mode            = "GLOBAL"
 }
 
 resource "google_compute_subnetwork" "compute" {

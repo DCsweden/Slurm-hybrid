@@ -55,7 +55,7 @@ resource "google_compute_route" "aws_via_vpn" {
   name       = "${var.project_name}-to-aws"
   dest_range = var.aws_vpc_cidr
   network    = module.gcp.vpc_name
-  priority   = 1000
+  priority   = 100
 
   next_hop_vpn_tunnel = google_compute_vpn_tunnel.aws_tunnel1.id
 }
