@@ -28,6 +28,7 @@ resource "aws_instance" "login" {
   key_name                    = aws_key_pair.main.key_name
   private_ip                  = var.login_private_ip
   associate_public_ip_address = true
+  user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/../../templates/cloud-init-login.yaml", local.cloud_init_base)
 
@@ -50,6 +51,7 @@ resource "aws_instance" "ctrl1" {
   private_ip                  = var.ctrl1_private_ip
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.controller.name
+  user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", local.cloud_init_base)
 
@@ -74,6 +76,7 @@ resource "aws_instance" "ctrl2" {
   private_ip                  = var.ctrl2_private_ip
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.controller.name
+  user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/../../templates/cloud-init-controller.yaml", local.cloud_init_base)
 
@@ -97,6 +100,7 @@ resource "aws_instance" "compute" {
   key_name               = aws_key_pair.main.key_name
   private_ip             = var.compute_private_ip
   iam_instance_profile   = aws_iam_instance_profile.compute.name
+  user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/../../templates/cloud-init-compute.yaml", local.cloud_init_base)
 
