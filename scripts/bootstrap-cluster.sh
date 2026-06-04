@@ -173,7 +173,7 @@ cp "$REPO_ROOT/scripts/slurm_resume" \
    "$REPO_ROOT/scripts/slurm_resume_fail" \
    "$STAGING/usr/sbin/"
 chmod +x "$STAGING/opt/slurm-hybrid/"*.sh "$STAGING/usr/sbin/"*
-tar czf /tmp/slurm-hybrid-assets.tgz -C "$STAGING" .
+tar czf /tmp/slurm-hybrid-assets.tgz -C "$STAGING" etc opt usr
 rm -rf "$STAGING"
 
 sync_assets() {
@@ -189,6 +189,14 @@ sync_assets() {
     scp_to_host "$ip" /tmp/slurm-hybrid-assets.tgz "$tgz"
   fi
   run_host "$ip" sudo tar xzf "$tgz" -C /
+  run_host "$ip" 'sudo bash -s' <<'REMOTE'
+set -e
+if [[ "$(stat -c '%a' /)" != "755" || "$(stat -c '%U:%G' /)" != "root:root" ]]; then
+  echo "WARN: repairing / after asset sync"
+  chmod 755 /
+  chown root:root /
+fi
+REMOTE
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
   run_host "$ip" sudo rm -f "$tgz"
 }

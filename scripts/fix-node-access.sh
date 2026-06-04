@@ -20,13 +20,14 @@ set -euo pipefail
 PUB='${PUB//\'/\'\\\'\'}'
 H=\$(hostname)
 
-# Broken / (700 ubuntu) prevents slurmadmin from running any binary — fix first.
-ROOT_PERM=\$(stat -c '%a' /)
-ROOT_OWNER=\$(stat -c '%U:%G' /)
-if [[ "\$ROOT_PERM" != "755" || "\$ROOT_OWNER" != "root:root" ]]; then
-  echo "WARN: fixing / (\$ROOT_PERM \$ROOT_OWNER -> 755 root:root)"
-  chmod 755 /
-  chown root:root /
+# Broken / (700 ubuntu) prevents slurmadmin from running any binary — always normalize.
+chmod 755 /
+chown root:root /
+ROOT_PERM=$(stat -c '%a' /)
+ROOT_OWNER=$(stat -c '%U:%G' /)
+if [[ "$ROOT_PERM" != "755" || "$ROOT_OWNER" != "root:root" ]]; then
+  echo "ERROR: could not fix / ($ROOT_PERM $ROOT_OWNER)" >&2
+  exit 1
 fi
 USR_OWNER=\$(stat -c '%U:%G' /usr 2>/dev/null || echo unknown)
 if [[ "\$USR_OWNER" != "root:root" ]]; then
@@ -64,8 +65,7 @@ done
 systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 
 if ! runuser -u slurmadmin -- true 2>/dev/null; then
-  echo "ERROR: slurmadmin still cannot execute after repair" >&2
-  stat -c '%a %U:%G' /
+  echo "ERROR: slurmadmin cannot execute (check / permissions: $(stat -c '%a %U:%G' /))" >&2
   exit 1
 fi
 echo "slurmadmin account OK on \${H}"
