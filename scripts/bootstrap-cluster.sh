@@ -201,6 +201,8 @@ cp -a "\$STAGING/opt/slurm-hybrid/." /opt/slurm-hybrid/
 cp -a "\$STAGING/usr/sbin/." /usr/sbin/
 chown root:root / /etc /usr /opt
 chmod 755 / /etc /usr /opt
+chmod 600 /etc/slurm/slurmdbd.conf 2>/dev/null || true
+chmod 644 /etc/slurm/slurm.conf /etc/slurm/cgroup.conf 2>/dev/null || true
 REMOTE
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
   run_host "$ip" sudo rm -f "$tgz"

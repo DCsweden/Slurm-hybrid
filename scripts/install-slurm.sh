@@ -46,7 +46,7 @@ $SUDO cp -f etc/cgroup.conf.example /etc/slurm/cgroup.conf 2>/dev/null || true
 $SUDO tee /etc/systemd/system/slurmctld.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm controller daemon
-After=munge mariadb.service network-online.target
+After=munge.service mariadb.service network-online.target
 Wants=network-online.target
 
 [Service]
@@ -64,7 +64,7 @@ UNIT
 $SUDO tee /etc/systemd/system/slurmdbd.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm DBD
-After=munge mariadb.service
+After=munge.service mariadb.service
 
 [Service]
 ExecStart=/usr/local/sbin/slurmdbd -f /etc/slurm/slurmdbd.conf
@@ -77,7 +77,7 @@ UNIT
 $SUDO tee /etc/systemd/system/slurmd.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm node daemon
-After=munge network-online.target
+After=munge.service network-online.target
 
 [Service]
 ExecStart=/usr/local/sbin/slurmd -f /etc/slurm/slurm.conf

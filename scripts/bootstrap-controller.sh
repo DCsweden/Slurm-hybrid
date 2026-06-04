@@ -18,6 +18,8 @@ if [[ "${IS_PRIMARY:-false}" == "true" ]]; then
     DB_PASSWORD=$(cat /etc/slurm-hybrid/db_password)
   fi
   sed -i "s/SLURM_DB_PASSWORD/${DB_PASSWORD}/" /etc/slurm/slurmdbd.conf
+  chmod 600 /etc/slurm/slurmdbd.conf
+  chown slurm:slurm /etc/slurm/slurmdbd.conf
   mysql -e "CREATE DATABASE IF NOT EXISTS slurm_acct_db;"
   mysql -e "CREATE USER IF NOT EXISTS 'slurm'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';"
   mysql -e "GRANT ALL ON slurm_acct_db.* TO 'slurm'@'localhost';"
