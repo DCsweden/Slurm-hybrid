@@ -11,6 +11,7 @@ if [[ ! -f "$KEY" ]]; then
 fi
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=30)
 SCP=(scp -i "$KEY" -o StrictHostKeyChecking=no)
+CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
 
 : "${CTRL1_IP:?CTRL1_IP required}"
 : "${CTRL2_IP:?CTRL2_IP required}"
@@ -47,8 +48,6 @@ is_private_ip() {
   [[ "$1" =~ ^10\. ]] || [[ "$1" =~ ^192\.168\. ]] || [[ "$1" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
 }
 
-CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
-
 run_host() {
   local ip="$1"
   shift
@@ -68,6 +67,48 @@ echo "==> Install cluster SSH key on ctrl1 for internal hops"
 run_ctrl1 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
 "${SCP[@]}" "$KEY" "${CTRL1}:.ssh/id_cluster"
 run_ctrl1 'chmod 600 ~/.ssh/id_cluster'
+
+echo "==> Sync Slurm configs and scripts from repo"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STAGING=$(mktemp -d)
+mkdir -p "$STAGING/etc/slurm" "$STAGING/opt/slurm-hybrid" "$STAGING/usr/sbin"
+cp "$REPO_ROOT/slurm/"*.conf "$STAGING/etc/slurm/"
+cp "$REPO_ROOT/scripts/install-slurm.sh" \
+   "$REPO_ROOT/scripts/bootstrap-controller.sh" \
+   "$REPO_ROOT/scripts/bootstrap-login.sh" \
+   "$REPO_ROOT/scripts/bootstrap-compute.sh" \
+   "$STAGING/opt/slurm-hybrid/"
+cp "$REPO_ROOT/scripts/slurm_resume" \
+   "$REPO_ROOT/scripts/slurm_suspend" \
+   "$REPO_ROOT/scripts/slurm_resume_fail" \
+   "$STAGING/usr/sbin/"
+chmod +x "$STAGING/opt/slurm-hybrid/"*.sh "$STAGING/usr/sbin/"*
+tar czf /tmp/slurm-hybrid-assets.tgz -C "$STAGING" .
+rm -rf "$STAGING"
+
+sync_assets() {
+  local ip="$1"
+  echo "  assets -> $ip"
+  if is_private_ip "$ip"; then
+    "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "${CTRL1}:/tmp/slurm-hybrid-assets.tgz"
+    run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/slurm-hybrid-assets.tgz slurmadmin@${ip}:/tmp/"
+  else
+    "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "slurmadmin@${ip}:/tmp/"
+  fi
+  run_host "$ip" 'sudo tar xzf /tmp/slurm-hybrid-assets.tgz -C / && sudo chmod +x /opt/slurm-hybrid/*.sh /usr/sbin/slurm_* 2>/dev/null || true && rm -f /tmp/slurm-hybrid-assets.tgz'
+}
+
+for ip in "$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP"; do sync_assets "$ip"; done
+
+if [[ -n "${DB_PASSWORD:-}" ]]; then
+  for ip in "$CTRL1_IP" "$CTRL2_IP"; do
+    run_host "$ip" "sudo bash -s" <<REMOTE
+install -d -m 755 /etc/slurm-hybrid
+printf '%s\n' '${DB_PASSWORD//\'/\'\\\'\'}' | tee /etc/slurm-hybrid/db_password >/dev/null
+chmod 600 /etc/slurm-hybrid/db_password
+REMOTE
+  done
+fi
 
 echo "==> Ensure slurmadmin keys on private nodes"
 export SSH_KEY="$KEY" CTRL1_IP

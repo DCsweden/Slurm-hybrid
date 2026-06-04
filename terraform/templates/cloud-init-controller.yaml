@@ -9,61 +9,6 @@ users:
     ssh_authorized_keys:
       - ${ssh_public_key}
 
-write_files:
-  - path: /home/slurmadmin/.ssh/authorized_keys
-    defer: true
-    owner:
-      name: slurmadmin
-      group: slurmadmin
-    permissions: "0600"
-    content: |
-      ${ssh_public_key}
-
-  - path: /etc/slurm/slurm.conf
-    content: |
-      ${indent(6, slurm_conf)}
-  - path: /etc/slurm/slurmdbd.conf
-    content: |
-      ${indent(6, slurmdbd_conf)}
-  - path: /etc/slurm/cgroup.conf
-    content: |
-      ${indent(6, cgroup_conf)}
-  - path: /opt/slurm-hybrid/install-slurm.sh.b64
-    encoding: b64
-    content: ${install_script_b64}
-  - path: /opt/slurm-hybrid/bootstrap-controller.sh.b64
-    encoding: b64
-    content: ${bootstrap_script_b64}
-  - path: /usr/sbin/slurm_resume
-    permissions: '0755'
-    content: |
-      ${indent(6, resume_script)}
-  - path: /usr/sbin/slurm_suspend
-    permissions: '0755'
-    content: |
-      ${indent(6, suspend_script)}
-  - path: /usr/sbin/slurm_resume_fail
-    permissions: '0755'
-    content: |
-      ${indent(6, resume_fail_script)}
-  - path: /etc/slurm/cloud-nodes.json
-    content: |
-      ${indent(6, cloud_nodes_json)}
-  - path: /etc/slurm-hybrid/db_password
-    permissions: '0600'
-    owner: root:root
-    content: ${db_password}
-  - path: /etc/slurm-hybrid/bootstrap.env
-    permissions: '0644'
-    content: |
-      IS_PRIMARY=${is_primary}
-      SLURM_VERSION=${slurm_version}
-      AWS_COMPUTE_ID=${aws_compute_id}
-      GCP_PROJECT=${gcp_project_id}
-      GCP_ZONE=${gcp_zone}
-      GCP_INSTANCE=${gcp_compute_hostname}
-      CLUSTER_NAME=${cluster_name}
-
 packages:
   - munge
   - mariadb-server
@@ -71,6 +16,4 @@ packages:
   - awscli
 
 runcmd:
-  - [ bash, -lc, "base64 -d /opt/slurm-hybrid/install-slurm.sh.b64 > /opt/slurm-hybrid/install-slurm.sh && chmod +x /opt/slurm-hybrid/install-slurm.sh" ]
-  - [ bash, -lc, "base64 -d /opt/slurm-hybrid/bootstrap-controller.sh.b64 > /opt/slurm-hybrid/bootstrap-controller.sh && chmod +x /opt/slurm-hybrid/bootstrap-controller.sh" ]
-  - [ bash, -lc, "set -a && source /etc/slurm-hybrid/bootstrap.env && set +a && export DB_PASSWORD=$$(cat /etc/slurm-hybrid/db_password) && /opt/slurm-hybrid/bootstrap-controller.sh >>/var/log/slurm-bootstrap.log 2>&1 || true" ]
+  - [ bash, -lc, "install -d -m 755 /opt/slurm-hybrid /etc/slurm /etc/slurm-hybrid" ]
