@@ -1,4 +1,5 @@
 #cloud-config
+# recovery_stamp: 2 — force login replace after tarball setuid corruption
 package_update: true
 
 users:
