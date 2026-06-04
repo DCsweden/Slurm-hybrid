@@ -29,15 +29,3 @@ resource "google_project_iam_member" "ci_iap_tunnel" {
 
   depends_on = [google_project_service.iap]
 }
-
-resource "google_iap_tunnel_instance_iam_member" "ci_gcp_compute" {
-  count = var.github_ci_service_account_email != "" ? 1 : 0
-
-  project  = var.project_id
-  zone     = var.zone
-  instance = google_compute_instance.compute.name
-  role     = "roles/iap.tunnelResourceAccessor"
-  member   = "serviceAccount:${var.github_ci_service_account_email}"
-
-  depends_on = [google_project_service.iap]
-}

@@ -158,8 +158,11 @@ REMOTE
   run_ctrl1 "ssh -i ${CLUSTER_KEY} -o BatchMode=yes slurmadmin@10.0.1.10 echo ready"
 fi
 
-if [[ "$LOGIN_REACHABLE" == true ]]; then
-  echo "==> Install cluster SSH key on login (hop to 10.0.x / 10.1.x)"
+echo "==> Install cluster SSH key on login (from ctrl1, for hops to 10.0.x / 10.1.x)"
+run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@10.0.1.10 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'" 2>/dev/null || true
+run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /home/slurmadmin/.ssh/id_cluster slurmadmin@10.0.1.10:.ssh/id_cluster" 2>/dev/null || true
+run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@10.0.1.10 'chmod 600 ~/.ssh/id_cluster'" 2>/dev/null || true
+if [[ "$LOGIN_REACHABLE" == true && "$LOGIN_IP" != "10.0.1.10" ]]; then
   run_login 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
   "${SCP[@]}" "$KEY" "${LOGIN}:.ssh/id_cluster"
   run_login 'chmod 600 ~/.ssh/id_cluster'
