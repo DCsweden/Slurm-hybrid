@@ -90,3 +90,90 @@ jobs:
         run: |
           echo "## Terraform outputs" >> "$GITHUB_STEP_SUMMARY"
           terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || terraform output >> "$GITHUB_STEP_SUMMARY"
+
+  bootstrap-slurm:
+    name: Bootstrap Slurm (install + start)
+    needs: apply
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 120
+    if: success()
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-north-1
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=slurm-hybrid/terraform.tfstate" \
+            -backend-config="region=eu-north-1" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: Load endpoints
+        id: tf
+        working-directory: terraform
+        run: |
+          echo "ctrl1=$(terraform output -raw ctrl1_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "ctrl2=$(terraform output -raw ctrl2_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "login=$(terraform output -raw login_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "aws_compute_id=$(terraform output -raw aws_compute_instance_id)" >> "$GITHUB_OUTPUT"
+          echo "gcp_compute_ip=$(terraform output -raw gcp_compute_private_ip)" >> "$GITHUB_OUTPUT"
+          terraform output -raw power_save_gcp_key > /tmp/gcp-sa.json
+
+      - name: Setup SSH private key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/cluster_key
+          chmod 600 ~/.ssh/cluster_key
+
+      - name: Resolve DB password
+        working-directory: terraform
+        run: |
+          if [[ -n "${{ secrets.SLURM_DB_PASSWORD }}" ]]; then
+            echo "DB_PASSWORD=${{ secrets.SLURM_DB_PASSWORD }}" >> "$GITHUB_ENV"
+          else
+            echo "DB_PASSWORD=$(terraform output -raw db_password)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run bootstrap-cluster.sh
+        env:
+          SSH_KEY: ~/.ssh/cluster_key
+          CTRL1_IP: ${{ steps.tf.outputs.ctrl1 }}
+          CTRL2_IP: ${{ steps.tf.outputs.ctrl2 }}
+          LOGIN_IP: ${{ steps.tf.outputs.login }}
+          AWS_COMPUTE_INSTANCE_ID: ${{ steps.tf.outputs.aws_compute_id }}
+          GCP_COMPUTE_IP: ${{ steps.tf.outputs.gcp_compute_ip }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+          GCP_SA_KEY_FILE: /tmp/gcp-sa.json
+        run: |
+          chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh
+          bash scripts/bootstrap-cluster.sh | tee bootstrap.log
+
+      - name: Bootstrap summary
+        run: |
+          echo "## Slurm bootstrap" >> "$GITHUB_STEP_SUMMARY"
+          tail -40 bootstrap.log >> "$GITHUB_STEP_SUMMARY"

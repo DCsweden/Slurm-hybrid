@@ -53,12 +53,9 @@ output "power_save_gcp_key" {
 
 output "post_deploy_notes" {
   value = <<-EOT
-    1. SSH to login: ssh slurmadmin@${module.aws.login_public_ip}
-    2. Copy Munge key from ctrl1 to all nodes (see README)
-    3. On ctrl1: systemctl start slurmctld slurmdbd mariadb
-    4. On ctrl2: systemctl start slurmctld (backup controller)
-    5. Verify VPN: ping ${module.gcp.compute_private_ip} from ctrl1
-    6. Test power save: scontrol update NodeName=aws-compute,gcp-compute State=POWER_DOWN
-    7. Submit job to partition cloud: sbatch -p cloud --wrap='hostname'
+    Slurm bootstrap runs automatically via GitHub Actions (job bootstrap-slurm after terraform apply).
+    Manual only if workflow skipped: bash scripts/bootstrap-cluster.sh with SSH_KEY and node IPs from terraform output.
+    SSH login: ssh slurmadmin@${module.aws.login_public_ip}
+    Verify VPN: ping ${module.gcp.compute_private_ip} from ctrl1
   EOT
 }

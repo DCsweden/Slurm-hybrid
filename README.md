@@ -51,10 +51,11 @@ Två workflows under `.github/workflows/`:
 
 | Workflow | Fil | Syfte |
 |----------|-----|--------|
-| **Terraform Apply** | `terraform-apply.yml` | Skapar/uppdaterar infrastruktur |
+| **Terraform Apply** | `terraform-apply.yml` | Skapar infrastruktur + jobb **bootstrap-slurm** (Munge, Slurm build, slurmctld/slurmd) |
+| **Slurm Bootstrap** | `slurm-bootstrap.yml` | Endast bootstrap (om Apply redan körts) |
 | **Terraform Destroy** | `terraform-destroy.yml` | Raderar all infrastruktur (kräver `confirm_destroy=destroy`) |
 
-Apply körs vid `workflow_dispatch` och push till `main` (terraform-relaterade sökvägar). Destroy körs **endast manuellt** med bekräftelse.
+Apply körs vid `workflow_dispatch` och push till `main`. Efter lyckad Apply startar **bootstrap-slurm** automatiskt (~60–90 min, bygger Slurm på ctrl1 och synkar till övriga noder). Destroy körs **endast manuellt** med bekräftelse.
 
 ### Förberedelse (engång)
 
@@ -89,14 +90,15 @@ Apply körs vid `workflow_dispatch` och push till `main` (terraform-relaterade s
 
    Ta bort gamla secrets om de finns: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `GCP_SA_KEY`.
 
-3. **GitHub repository secrets** (kvar för övrigt):
+3. **GitHub repository secrets**:
 
    | Secret | Beskrivning |
    |--------|-------------|
-   | `SSH_PUBLIC_KEY` | Publik SSH-nyckel för `slurmadmin` |
+   | `SSH_PUBLIC_KEY` | Publik SSH-nyckel för `slurmadmin` (måste matcha privat nyckel) |
+   | `SSH_PRIVATE_KEY` | **Privat** nyckel till samma par (krävs för bootstrap-jobb) |
    | `TF_STATE_BUCKET` | S3-bucket från bootstrap |
    | `TF_STATE_LOCK_TABLE` | DynamoDB-tabell från bootstrap |
-   | `SLURM_DB_PASSWORD` | Valfritt; annars genereras av Terraform |
+   | `SLURM_DB_PASSWORD` | Valfritt; annars läses `terraform output db_password` i bootstrap |
 
 4. **Environments**: `production` och `production-destroy` (OIDC `sub` tillåter dessa).
 

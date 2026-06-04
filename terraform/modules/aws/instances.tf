@@ -62,6 +62,7 @@ resource "aws_instance" "ctrl1" {
     })
     aws_compute_id         = aws_instance.compute.id
     gcp_compute_hostname   = var.gcp_compute_hostname
+    cluster_name           = var.cluster_name
   }))
 
   root_block_device {
@@ -95,6 +96,7 @@ resource "aws_instance" "ctrl2" {
     })
     aws_compute_id         = aws_instance.compute.id
     gcp_compute_hostname   = var.gcp_compute_hostname
+    cluster_name           = var.cluster_name
   }))
 
   root_block_device {

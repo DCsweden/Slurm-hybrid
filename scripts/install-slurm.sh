@@ -5,8 +5,11 @@ set -euo pipefail
 SLURM_VERSION="${SLURM_VERSION:-24.05.3}"
 PREFIX=/usr/local
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y \
+SUDO=""
+[[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
+
+$SUDO apt-get update
+DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y \
   build-essential fakeroot devscripts equivs \
   libmunge-dev libmariadb-dev libpam0g-dev libhwloc-dev \
   libjson-c-dev libhttp-parser-dev libyaml-dev \
@@ -19,11 +22,11 @@ if ! command -v gcloud >/dev/null 2>&1; then
     > /etc/apt/sources.list.d/google-cloud-sdk.list
   curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
     | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-  apt-get update && apt-get install -y google-cloud-cli
+  $SUDO apt-get update && $SUDO apt-get install -y google-cloud-cli
 fi
 
-id -u slurm &>/dev/null || useradd -r -s /sbin/nologin slurm
-id -u slurmadmin &>/dev/null || useradd -m -s /bin/bash slurmadmin
+id -u slurm &>/dev/null || $SUDO useradd -r -s /sbin/nologin slurm
+id -u slurmadmin &>/dev/null || $SUDO useradd -m -s /bin/bash slurmadmin
 
 cd /tmp
 curl -fsSLO "https://download.schedmd.com/slurm/slurm-${SLURM_VERSION}.tar.bz2"
@@ -32,15 +35,15 @@ cd "slurm-${SLURM_VERSION}"
 
 ./configure --prefix="$PREFIX" --sysconfdir=/etc/slurm --enable-pam --with-mysql
 make -j"$(nproc)"
-make install
-ldconfig
+$SUDO make install
+$SUDO ldconfig
 
-mkdir -p /etc/slurm /var/spool/slurmctld /var/log/slurm
-chown slurm:slurm /var/spool/slurmctld
+$SUDO mkdir -p /etc/slurm /var/spool/slurmctld /var/log/slurm
+$SUDO chown slurm:slurm /var/spool/slurmctld
 
-cp -f etc/cgroup.conf.example /etc/slurm/cgroup.conf 2>/dev/null || true
+$SUDO cp -f etc/cgroup.conf.example /etc/slurm/cgroup.conf 2>/dev/null || true
 
-cat > /etc/systemd/system/slurmctld.service <<'UNIT'
+$SUDO tee /etc/systemd/system/slurmctld.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm controller daemon
 After=munge mariadb.service network-online.target
@@ -58,7 +61,7 @@ User=slurm
 WantedBy=multi-user.target
 UNIT
 
-cat > /etc/systemd/system/slurmdbd.service <<'UNIT'
+$SUDO tee /etc/systemd/system/slurmdbd.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm DBD
 After=munge mariadb.service
@@ -71,7 +74,7 @@ User=slurm
 WantedBy=multi-user.target
 UNIT
 
-cat > /etc/systemd/system/slurmd.service <<'UNIT'
+$SUDO tee /etc/systemd/system/slurmd.service >/dev/null <<'UNIT'
 [Unit]
 Description=Slurm node daemon
 After=munge network-online.target
@@ -84,4 +87,4 @@ User=root
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
+$SUDO systemctl daemon-reload

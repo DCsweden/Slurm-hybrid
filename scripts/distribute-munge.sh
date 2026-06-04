@@ -2,102 +2,86 @@
 # Distribute Munge key from ctrl1 to all Slurm nodes
 set -euo pipefail
 
-KEY="${KEY:-$HOME/.ssh/slurm_deploy}"
-CTRL1_IP="16.16.58.152"
+KEY="${SSH_KEY:-${KEY:-$HOME/.ssh/cluster_key}}"
+CTRL1_IP="${CTRL1_IP:-16.16.58.152}"
 CTRL1="slurmadmin@${CTRL1_IP}"
 
-ALL_IPS=(
-  13.49.245.182   # login
-  16.16.58.152    # ctrl1
-  51.20.81.87     # ctrl2
-  10.0.1.10       # login private
-  10.0.1.12       # ctrl2 private
-  10.0.2.10       # aws-compute
-  10.1.1.10       # gcp-compute
-)
+LOGIN_IP="${LOGIN_IP:-13.49.245.182}"
+CTRL2_IP="${CTRL2_IP:-51.20.81.87}"
+AWS_COMPUTE_IP="${AWS_COMPUTE_IP:-10.0.2.10}"
+GCP_COMPUTE_IP="${GCP_COMPUTE_IP:-10.1.1.10}"
 
-needs_jump() {
-  case "$1" in
-    10.0.*|10.1.*) return 0 ;;
-    *) return 1 ;;
-  esac
+# Unique targets (public + private duplicates skipped)
+ALL_IPS=("$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP" "$GCP_COMPUTE_IP")
+
+install_munge_offline() {
+  local ip="$1"
+  run_ctrl1 "scp -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no /tmp/libmunge2*.deb /tmp/munge*.deb slurmadmin@${ip}:/tmp/ 2>/dev/null" || return 1
+  run_host "$ip" 'sudo dpkg -i /tmp/libmunge2*.deb /tmp/munge*.deb'
 }
 
-ssh_target() {
+run_host() {
   local ip="$1"
   shift
-  if needs_jump "$ip"; then
-    ssh -i "$KEY" -o StrictHostKeyChecking=no -o "ProxyJump=slurmadmin@${CTRL1_IP}" "slurmadmin@${ip}" "$@"
-  else
-    ssh -i "$KEY" -o StrictHostKeyChecking=no "slurmadmin@${ip}" "$@"
+  if [[ "$ip" == "$GCP_COMPUTE_IP" ]]; then
+    return 1
   fi
+  ssh -i "$KEY" -o StrictHostKeyChecking=no -o "ProxyJump=${CTRL1}" "slurmadmin@${ip}" "$@" 2>/dev/null || \
+    ssh -i "$KEY" -o StrictHostKeyChecking=no "slurmadmin@${ip}" "$@"
 }
 
-scp_to() {
-  local ip="$1" src="$2" dst="$3"
-  if needs_jump "$ip"; then
-    scp -i "$KEY" -o StrictHostKeyChecking=no -o "ProxyJump=slurmadmin@${CTRL1_IP}" "$src" "slurmadmin@${ip}:${dst}"
-  else
-    scp -i "$KEY" -o StrictHostKeyChecking=no "$src" "slurmadmin@${ip}:${dst}"
-  fi
+run_ctrl1() {
+  ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" "$@"
 }
+
+echo "==> Prepare munge debs on ctrl1 (for offline nodes)"
+run_ctrl1 'cd /tmp && apt-get download -qq libmunge2 munge 2>/dev/null || true'
 
 install_munge_host() {
   local ip="$1"
-  echo "  install munge @ $ip"
-  ssh_target "$ip" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge 2>/dev/null || true
-    sudo systemctl stop munge 2>/dev/null || true'
+  echo "  munge @ $ip"
+  if ! run_host "$ip" 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge' 2>/dev/null; then
+    install_munge_offline "$ip" || true
+  fi
+  run_host "$ip" 'sudo systemctl stop munge 2>/dev/null || true' || true
 }
 
-echo "==> Ensure munge installed on all nodes"
-for ip in "${ALL_IPS[@]}"; do install_munge_host "$ip"; done
+for ip in "${ALL_IPS[@]}"; do
+  [[ "$ip" == "$GCP_COMPUTE_IP" ]] && continue
+  install_munge_host "$ip" || true
+done
 
-echo "==> Create/sync key on ctrl1"
-ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" 'if [[ ! -f /etc/munge/munge.key ]]; then
-  sudo dd if=/dev/urandom bs=1 count=1024 of=/etc/munge/munge.key status=none
+echo "==> Munge key on ctrl1"
+run_ctrl1 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq munge
+if [[ ! -f /etc/munge/munge.key ]]; then
+  sudo create-munge-key 2>/dev/null || sudo dd if=/dev/urandom bs=1 count=1024 of=/etc/munge/munge.key status=none
   sudo chown munge:munge /etc/munge/munge.key
   sudo chmod 400 /etc/munge/munge.key
 fi
-sudo systemctl enable munge
-sudo systemctl restart munge
-sudo systemctl is-active munge'
-
-KEY_TMP=$(mktemp)
-trap 'rm -f "$KEY_TMP"' EXIT
-ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" 'sudo cat /etc/munge/munge.key' > "$KEY_TMP"
-chmod 600 "$KEY_TMP"
+sudo systemctl enable --now munge'
 
 deploy_key() {
   local ip="$1"
-  echo "  deploy key -> $ip"
-  scp_to "$ip" "$KEY_TMP" /tmp/munge.key
-  ssh_target "$ip" 'sudo install -o munge -g munge -m 400 /tmp/munge.key /etc/munge/munge.key
+  echo "  key -> $ip"
+  run_ctrl1 "scp -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no /tmp/munge.key.sync slurmadmin@${ip}:/tmp/munge.key"
+  run_host "$ip" 'sudo install -o munge -g munge -m 400 /tmp/munge.key /etc/munge/munge.key
     rm -f /tmp/munge.key
-    sudo systemctl enable munge
-    sudo systemctl restart munge
-    sudo systemctl is-active munge'
+    sudo systemctl enable --now munge'
 }
 
-echo "==> Distribute key to all nodes (except ctrl1 source)"
+run_ctrl1 'sudo cp /etc/munge/munge.key /tmp/munge.key.sync && sudo chown slurmadmin:slurmadmin /tmp/munge.key.sync && chmod 600 /tmp/munge.key.sync'
+
 for ip in "${ALL_IPS[@]}"; do
-  [[ "$ip" == "$CTRL1_IP" ]] && continue
+  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" ]] && continue
   deploy_key "$ip"
 done
 
-echo "==> Verify"
-REF=$(ssh -i "$KEY" -o StrictHostKeyChecking=no "$CTRL1" 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
-echo "  ctrl1 key md5: $REF"
+REF=$(run_ctrl1 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
+echo "  ctrl1 md5: $REF"
 for ip in "${ALL_IPS[@]}"; do
-  [[ "$ip" == "$CTRL1_IP" ]] && continue
-  md5=$(ssh_target "$ip" 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
-  state=$(ssh_target "$ip" 'sudo systemctl is-active munge')
-  if [[ "$md5" == "$REF" && "$state" == "active" ]]; then
-    echo "  $ip: OK"
-  else
-    echo "  $ip: FAIL md5=$md5 state=$state"
-    exit 1
-  fi
+  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" ]] && continue
+  md5=$(run_host "$ip" 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
+  st=$(run_host "$ip" 'sudo systemctl is-active munge')
+  [[ "$md5" == "$REF" && "$st" == "active" ]] && echo "  $ip OK" || { echo "  $ip FAIL"; exit 1; }
 done
-
-echo "Done. Munge key synced from ctrl1 to all nodes."
+echo "Munge sync done (GCP handled in bootstrap-cluster)."
