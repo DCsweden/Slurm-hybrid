@@ -308,11 +308,21 @@ fi
 echo "==> Bootstrap aws-compute"
 INSTANCE_ID="${AWS_COMPUTE_INSTANCE_ID:-}"
 run_host 10.0.2.10 "sudo bash -s" <<REMOTE
+set -euo pipefail
 export SLURM_VERSION=${SLURM_VERSION}
 export NODE_NAME=aws-compute
 export CLOUD_PROVIDER=aws
 export INSTANCE_ID=${INSTANCE_ID}
+if [[ ! -x /usr/local/sbin/slurmd ]]; then
+  echo "ERROR: slurmd not synced to aws-compute" >&2
+  exit 1
+fi
+if ! systemctl is-active --quiet munge; then
+  echo "ERROR: munge not active on aws-compute" >&2
+  exit 1
+fi
 bash /opt/slurm-hybrid/bootstrap-compute.sh
+sudo systemctl is-active munge slurmd
 REMOTE
 
 echo "==> GCP: munge debs + slurm tarball + slurmd"
