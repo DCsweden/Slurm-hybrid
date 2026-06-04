@@ -73,4 +73,4 @@ packages:
 runcmd:
   - [ bash, -lc, "base64 -d /opt/slurm-hybrid/install-slurm.sh.b64 > /opt/slurm-hybrid/install-slurm.sh && chmod +x /opt/slurm-hybrid/install-slurm.sh" ]
   - [ bash, -lc, "base64 -d /opt/slurm-hybrid/bootstrap-controller.sh.b64 > /opt/slurm-hybrid/bootstrap-controller.sh && chmod +x /opt/slurm-hybrid/bootstrap-controller.sh" ]
-  - [ bash, -lc, "set -a && source /etc/slurm-hybrid/bootstrap.env && set +a && export DB_PASSWORD=$(cat /etc/slurm-hybrid/db_password) && /opt/slurm-hybrid/bootstrap-controller.sh >>/var/log/slurm-bootstrap.log 2>&1 || true" ]
+  - [ bash, -lc, "set -a && source /etc/slurm-hybrid/bootstrap.env && set +a && export DB_PASSWORD=$$(cat /etc/slurm-hybrid/db_password) && /opt/slurm-hybrid/bootstrap-controller.sh >>/var/log/slurm-bootstrap.log 2>&1 || true" ]

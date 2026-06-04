@@ -16,6 +16,7 @@ SCP=(scp -i "$KEY" -o StrictHostKeyChecking=no)
 : "${CTRL2_IP:?CTRL2_IP required}"
 : "${LOGIN_IP:?LOGIN_IP required}"
 : "${AWS_COMPUTE_IP:=10.0.2.10}"
+[[ -n "${AWS_COMPUTE_IP// }" ]] || AWS_COMPUTE_IP=10.0.2.10
 : "${GCP_COMPUTE_IP:=10.1.1.10}"
 : "${GCP_ZONE:=europe-north2-a}"
 : "${GCP_PROJECT:=dcprod}"
@@ -46,11 +47,15 @@ is_private_ip() {
   [[ "$1" =~ ^10\. ]] || [[ "$1" =~ ^192\.168\. ]] || [[ "$1" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
 }
 
+CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
+
 run_host() {
   local ip="$1"
   shift
+  local remote_cmd
+  printf -v remote_cmd '%q ' "$@"
   if is_private_ip "$ip"; then
-    run_ctrl1 ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=30 "slurmadmin@${ip}" "$@"
+    run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=30 slurmadmin@${ip} ${remote_cmd}"
   else
     "${SSH[@]}" "slurmadmin@${ip}" "$@"
   fi
@@ -106,7 +111,7 @@ run_ctrl1 'sudo tar czf /tmp/slurm-hybrid-bin.tgz -C /usr/local bin sbin libexec
 sync_slurm_binaries() {
   local ip="$1"
   echo "  sync binaries -> $ip"
-  run_ctrl1 "scp -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no /tmp/slurm-hybrid-bin.tgz slurmadmin@${ip}:/tmp/"
+  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/slurm-hybrid-bin.tgz slurmadmin@${ip}:/tmp/"
   run_host "$ip" 'sudo tar xzf /tmp/slurm-hybrid-bin.tgz -C /usr/local
     sudo ldconfig
     sudo tar xzf /tmp/slurm-hybrid-units.tgz -C / 2>/dev/null || true

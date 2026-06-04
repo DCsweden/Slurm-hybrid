@@ -10,14 +10,17 @@ CTRL1="slurmadmin@${CTRL1_IP}"
 LOGIN_IP="${LOGIN_IP:-13.49.245.182}"
 CTRL2_IP="${CTRL2_IP:-51.20.81.87}"
 AWS_COMPUTE_IP="${AWS_COMPUTE_IP:-10.0.2.10}"
+[[ -n "${AWS_COMPUTE_IP// }" ]] || AWS_COMPUTE_IP=10.0.2.10
 GCP_COMPUTE_IP="${GCP_COMPUTE_IP:-10.1.1.10}"
+
+CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
 
 # Unique targets (public + private duplicates skipped)
 ALL_IPS=("$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP" "$GCP_COMPUTE_IP")
 
 install_munge_offline() {
   local ip="$1"
-  run_ctrl1 "scp -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no /tmp/libmunge2*.deb /tmp/munge*.deb slurmadmin@${ip}:/tmp/ 2>/dev/null" || return 1
+  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/libmunge2*.deb /tmp/munge*.deb slurmadmin@${ip}:/tmp/ 2>/dev/null" || return 1
   run_host "$ip" 'sudo dpkg -i /tmp/libmunge2*.deb /tmp/munge*.deb'
 }
 
@@ -32,11 +35,13 @@ is_private_ip() {
 run_host() {
   local ip="$1"
   shift
+  local remote_cmd
+  printf -v remote_cmd '%q ' "$@"
   if [[ "$ip" == "$GCP_COMPUTE_IP" ]]; then
     return 1
   fi
   if is_private_ip "$ip"; then
-    run_ctrl1 ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=30 "slurmadmin@${ip}" "$@"
+    run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=30 slurmadmin@${ip} ${remote_cmd}"
   else
     ssh -i "$KEY" -o StrictHostKeyChecking=no "slurmadmin@${ip}" "$@"
   fi
@@ -71,7 +76,7 @@ sudo systemctl enable --now munge'
 deploy_key() {
   local ip="$1"
   echo "  key -> $ip"
-  run_ctrl1 "scp -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no /tmp/munge.key.sync slurmadmin@${ip}:/tmp/munge.key"
+  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/munge.key.sync slurmadmin@${ip}:/tmp/munge.key"
   run_host "$ip" 'sudo install -o munge -g munge -m 400 /tmp/munge.key /etc/munge/munge.key
     rm -f /tmp/munge.key
     sudo systemctl enable --now munge'

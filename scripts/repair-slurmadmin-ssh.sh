@@ -22,11 +22,13 @@ CTRL1="slurmadmin@${CTRL1_IP}"
 
 PRIVATE_IPS="${PRIVATE_IPS:-10.0.1.10 10.0.1.12 10.0.2.10}"
 
+CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
+
 install_key_ubuntu() {
   local ip="$1"
   local pub_line
   pub_line=$(head -1 "$PUB")
-  "${SSH[@]}" "$CTRL1" "ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} bash -s" <<REMOTE || return 1
+  "${SSH[@]}" "$CTRL1" "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} bash -s" <<REMOTE || return 1
 set -e
 PUB_LINE='${pub_line//\'/\'\\\'\'}'
 install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
@@ -41,7 +43,7 @@ install_key_slurmadmin() {
   local ip="$1"
   local pub_line
   pub_line=$(head -1 "$PUB")
-  "${SSH[@]}" "$CTRL1" "ssh -i ~/.ssh/id_cluster -o StrictHostKeyChecking=no slurmadmin@${ip} bash -s" <<REMOTE
+  "${SSH[@]}" "$CTRL1" "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@${ip} bash -s" <<REMOTE
 set -e
 PUB_LINE='${pub_line//\'/\'\\\'\'}'
 install -d -m 700 ~/.ssh
@@ -66,6 +68,6 @@ done
 
 echo "==> Verify slurmadmin login from ctrl1"
 for ip in $PRIVATE_IPS; do
-  "${SSH[@]}" "$CTRL1" "ssh -i ~/.ssh/id_cluster -o BatchMode=yes slurmadmin@${ip} hostname" && echo "  $ip OK"
+  "${SSH[@]}" "$CTRL1" "ssh -i ${CLUSTER_KEY} -o BatchMode=yes slurmadmin@${ip} hostname" && echo "  $ip OK"
 done
 echo "Done."
