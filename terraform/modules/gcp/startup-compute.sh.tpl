@@ -1,24 +1,7 @@
 #!/bin/bash
+# Minimal GCP compute startup — Slurm/Munge installed by deploy-compute-node.sh (same as AWS).
 set -euo pipefail
 
-mkdir -p /etc/slurm /opt/slurm-hybrid
-cat > /etc/slurm/slurm.conf <<'SLURM_EOF'
-${slurm_conf}
-SLURM_EOF
-
-cat > /opt/slurm-hybrid/install-slurm.sh <<'INSTALL_EOF'
-${install_script}
-INSTALL_EOF
-chmod +x /opt/slurm-hybrid/install-slurm.sh
-
-cat > /opt/slurm-hybrid/bootstrap-compute.sh <<'BOOT_EOF'
-${bootstrap_compute}
-BOOT_EOF
-chmod +x /opt/slurm-hybrid/bootstrap-compute.sh
-
-export SLURM_VERSION="${slurm_version}"
-export NODE_NAME="${node_name}"
-export CLOUD_PROVIDER="${cloud_provider}"
-export INSTANCE_ID="${instance_name}"
-
-/opt/slurm-hybrid/bootstrap-compute.sh
+hostnamectl set-hostname ${node_name}
+grep -q "${node_name}" /etc/hosts || echo "127.0.1.1 ${node_name}" >> /etc/hosts
+install -d -m 755 /opt/slurm-hybrid /etc/slurm

@@ -212,7 +212,7 @@ REMOTE
   run_host "$ip" sudo rm -f "$tgz"
 }
 
-for ip in "$CTRL1_IP" "$CTRL2_IP" "$LOGIN_IP" "$AWS_COMPUTE_IP"; do
+for ip in "$CTRL1_IP" "$CTRL2_IP" "$LOGIN_IP"; do
   if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_REACHABLE" != true ]]; then
     echo "  skip assets -> login (unreachable)"
     continue
@@ -280,7 +280,7 @@ sync_slurm_binaries() {
     sudo systemctl daemon-reload'
 }
 
-for ip in 10.0.1.12 10.0.1.10 10.0.2.10; do sync_slurm_binaries "$ip"; done
+for ip in 10.0.1.12 10.0.1.10; do sync_slurm_binaries "$ip"; done
 
 echo "==> Bootstrap ctrl2"
 run_host 10.0.1.12 "sudo bash -s" <<REMOTE
@@ -305,53 +305,10 @@ else
   echo "WARN: login bootstrap skipped — re-run workflow after login instance is replaced"
 fi
 
-echo "==> Bootstrap aws-compute"
-INSTANCE_ID="${AWS_COMPUTE_INSTANCE_ID:-}"
-run_host 10.0.2.10 "sudo bash -s" <<REMOTE
-set -euo pipefail
-export SLURM_VERSION=${SLURM_VERSION}
-export NODE_NAME=aws-compute
-export CLOUD_PROVIDER=aws
-export INSTANCE_ID=${INSTANCE_ID}
-if [[ ! -x /usr/local/sbin/slurmd ]]; then
-  echo "ERROR: slurmd not synced to aws-compute" >&2
-  exit 1
-fi
-if ! systemctl is-active --quiet munge; then
-  echo "ERROR: munge not active on aws-compute" >&2
-  exit 1
-fi
-bash /opt/slurm-hybrid/bootstrap-compute.sh
-sudo systemctl is-active munge slurmd
-REMOTE
-
-echo "==> GCP: munge debs + slurm tarball + slurmd"
-# Download munge debs on runner from ctrl1
-mkdir -p /tmp/slurm-bootstrap
-"${SCP[@]}" "${CTRL1}:/tmp/libmunge2_0.5.14-6ubuntu0.1_amd64.deb" /tmp/slurm-bootstrap/ 2>/dev/null || \
-  run_ctrl1 'apt-get download -o Dir::Cache::archives=/tmp libmunge2 munge 2>/dev/null; ls /tmp/*.deb' || true
-run_ctrl1 'cd /tmp && apt-get download libmunge2 munge 2>/dev/null || true'
-"${SCP[@]}" "${CTRL1}:/tmp/libmunge2"*.deb "${CTRL1}:/tmp/munge"*.deb /tmp/slurm-bootstrap/ 2>/dev/null || true
-"${SCP[@]}" "${CTRL1}:/tmp/slurm-hybrid-bin.tgz" /tmp/slurm-bootstrap/
-
-MKEY_B64=$(run_ctrl1 'sudo cat /etc/munge/munge.key | base64 -w0')
-
-gcloud compute scp --project="${GCP_PROJECT}" --zone="${GCP_ZONE}" --tunnel-through-iap \
-  /tmp/slurm-bootstrap/libmunge2*.deb /tmp/slurm-bootstrap/munge*.deb \
-  /tmp/slurm-bootstrap/slurm-hybrid-bin.tgz \
-  "${GCP_INSTANCE}:/tmp/" 2>/dev/null || true
-
-gcloud compute ssh "${GCP_INSTANCE}" --project="${GCP_PROJECT}" --zone="${GCP_ZONE}" --tunnel-through-iap --command="
-set -e
-sudo dpkg -i /tmp/libmunge2*.deb /tmp/munge*.deb 2>/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y munge
-echo '${MKEY_B64}' | base64 -d | sudo tee /etc/munge/munge.key >/dev/null
-sudo chown munge:munge /etc/munge/munge.key && sudo chmod 400 /etc/munge/munge.key
-sudo systemctl enable --now munge
-sudo tar xzf /tmp/slurm-hybrid-bin.tgz -C /usr/local && sudo ldconfig
-export SLURM_VERSION=${SLURM_VERSION} NODE_NAME=gcp-compute CLOUD_PROVIDER=gcp INSTANCE_ID=${GCP_INSTANCE}
-bash /opt/slurm-hybrid/bootstrap-compute.sh 2>/dev/null || sudo systemctl enable --now slurmd
-sudo systemctl is-active munge slurmd
-"
+echo "==> Deploy compute nodes (offline bundle from ctrl1)"
+export SSH_KEY="$KEY"
+bash "$(dirname "$0")/deploy-compute-node.sh" aws "${AWS_COMPUTE_IP}"
+bash "$(dirname "$0")/deploy-compute-node.sh" gcp
 
 if [[ -n "${GCP_SA_KEY_FILE:-}" && -f "${GCP_SA_KEY_FILE}" ]]; then
   echo "==> GCP power-save key on controllers"

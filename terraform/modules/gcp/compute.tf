@@ -27,14 +27,7 @@ resource "google_compute_instance" "compute" {
   }
 
   metadata_startup_script = templatefile("${path.module}/startup-compute.sh.tpl", {
-    slurm_version      = var.slurm_version
-    node_name          = var.compute_hostname
-    cloud_provider     = "gcp"
-    slurm_conf         = local.slurm_conf
-    install_script     = local.install_script
-    bootstrap_compute  = local.bootstrap_compute
-    instance_name      = var.compute_hostname
-    zone               = var.zone
+    node_name = var.compute_hostname
   })
 
   service_account {

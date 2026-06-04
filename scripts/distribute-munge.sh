@@ -66,7 +66,7 @@ REMOTE
 }
 
 for ip in "${ALL_IPS[@]}"; do
-  [[ "$ip" == "$GCP_COMPUTE_IP" ]] && continue
+  [[ "$ip" == "$GCP_COMPUTE_IP" || "$ip" == "$AWS_COMPUTE_IP" ]] && continue
   install_munge_host "$ip" || true
 done
 
@@ -97,16 +97,16 @@ deploy_key() {
 run_ctrl1 'sudo cp /etc/munge/munge.key /tmp/munge.key.sync && sudo chown slurmadmin:slurmadmin /tmp/munge.key.sync && chmod 600 /tmp/munge.key.sync'
 
 for ip in "${ALL_IPS[@]}"; do
-  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" ]] && continue
+  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" || "$ip" == "$AWS_COMPUTE_IP" ]] && continue
   deploy_key "$ip"
 done
 
 REF=$(run_ctrl1 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
 echo "  ctrl1 md5: $REF"
 for ip in "${ALL_IPS[@]}"; do
-  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" ]] && continue
+  [[ "$ip" == "$CTRL1_IP" || "$ip" == "$GCP_COMPUTE_IP" || "$ip" == "$AWS_COMPUTE_IP" ]] && continue
   md5=$(run_host "$ip" 'sudo md5sum /etc/munge/munge.key | awk "{print \$1}"')
   st=$(run_host "$ip" 'sudo systemctl is-active munge')
   [[ "$md5" == "$REF" && "$st" == "active" ]] && echo "  $ip OK" || { echo "  $ip FAIL"; exit 1; }
 done
-echo "Munge sync done (GCP handled in bootstrap-cluster)."
+echo "Munge sync done (compute nodes handled by deploy-compute-node.sh)."
