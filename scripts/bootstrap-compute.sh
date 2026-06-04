@@ -17,6 +17,23 @@ if [[ "$(hostname -s)" != "$NODE_NAME" ]]; then
   grep -q "$NODE_NAME" /etc/hosts || echo "127.0.1.1 $NODE_NAME" >> /etc/hosts
 fi
 
+if [[ ! -f /etc/systemd/system/slurmd.service ]]; then
+  cat >/etc/systemd/system/slurmd.service <<'UNIT'
+[Unit]
+Description=Slurm node daemon
+After=munge.service network-online.target
+
+[Service]
+ExecStart=/usr/local/sbin/slurmd -f /etc/slurm/slurm.conf
+User=root
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+fi
+
 if ! systemctl is-active --quiet munge; then
   systemctl enable munge
   systemctl start munge

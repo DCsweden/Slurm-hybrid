@@ -268,7 +268,7 @@ REMOTE
 fi
 
 echo "==> Package Slurm binaries from ctrl1"
-run_ctrl1 'sudo tar czf /tmp/slurm-hybrid-bin.tgz -C /usr/local bin sbin libexec lib 2>/dev/null; sudo tar czf /tmp/slurm-hybrid-units.tgz etc/systemd/system/slurmd.service etc/systemd/system/slurmctld.service 2>/dev/null; sudo chmod a+r /tmp/slurm-hybrid-*.tgz'
+run_ctrl1 'sudo tar czf /tmp/slurm-hybrid-bin.tgz -C /usr/local bin sbin libexec lib 2>/dev/null; sudo tar czf /tmp/slurm-hybrid-units.tgz -C / etc/systemd/system/slurmd.service etc/systemd/system/slurmctld.service etc/systemd/system/slurmdbd.service 2>/dev/null; sudo chmod a+r /tmp/slurm-hybrid-*.tgz'
 
 sync_slurm_binaries() {
   local ip="$1"
