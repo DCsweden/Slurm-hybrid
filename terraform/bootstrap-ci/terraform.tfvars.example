@@ -1,4 +1,4 @@
-github_repository = "DCbenjaminM/Slurm-hybrid"
+github_repository = "DCsweden/Slurm-hybrid"
 gcp_project_id    = "dcprod"
 aws_region        = "eu-north-1"
 tf_state_bucket   = "slurm-hybrid-tfstate"

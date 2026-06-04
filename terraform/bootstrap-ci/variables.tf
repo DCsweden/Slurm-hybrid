@@ -1,7 +1,7 @@
 variable "github_repository" {
   description = "GitHub repo in form OWNER/NAME (must match Actions OIDC sub)"
   type        = string
-  default     = "DCbenjaminM/Slurm-hybrid"
+  default     = "DCsweden/Slurm-hybrid"
 }
 
 variable "gcp_project_id" {
