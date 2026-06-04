@@ -16,6 +16,7 @@ resource "random_password" "db" {
 locals {
   cluster_name = var.project_name
   db_password  = var.db_password != "" ? var.db_password : random_password.db[0].result
+  allowed_ssh_cidr = var.allowed_ssh_cidr != "" ? var.allowed_ssh_cidr : "0.0.0.0/0"
 
   login_hostname     = "login"
   ctrl1_hostname     = "ctrl1"
@@ -35,7 +36,7 @@ module "aws" {
   ssh_public_key           = var.ssh_public_key
   slurm_version            = var.slurm_version
   db_password              = local.db_password
-  allowed_ssh_cidr         = var.allowed_ssh_cidr
+  allowed_ssh_cidr         = local.allowed_ssh_cidr
   instance_type_login      = var.instance_type_login
   instance_type_controller = var.instance_type_controller
   instance_type_compute    = var.instance_type_aws_compute
