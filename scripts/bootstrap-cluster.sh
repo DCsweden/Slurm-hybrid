@@ -89,6 +89,43 @@ run_login() {
   "${SSH[@]}" "${LOGIN_SSH_USER}@${LOGIN_IP}" "$@"
 }
 
+scp_to_host() {
+  local ip="$1"
+  local src="$2"
+  local dest="$3"
+  local user=slurmadmin
+  if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_REACHABLE" == true ]]; then
+    user="$LOGIN_SSH_USER"
+  fi
+  "${SCP[@]}" "$src" "${user}@${ip}:${dest}"
+}
+
+ensure_login_slurmadmin() {
+  [[ "$LOGIN_REACHABLE" == true ]] || return 0
+  if "${SSH[@]}" "slurmadmin@${LOGIN_IP}" 'echo ok' 2>/dev/null; then
+    LOGIN_SSH_USER=slurmadmin
+    return 0
+  fi
+  echo "==> Install slurmadmin SSH key on login (via ${LOGIN_SSH_USER})"
+  local pub
+  pub=$(ssh-keygen -y -f "$KEY")
+  run_login "sudo bash -s" <<REMOTE
+set -e
+install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
+AUTH=/home/slurmadmin/.ssh/authorized_keys
+touch "\$AUTH"
+grep -qxF '${pub//\'/\'\\\'\'}' "\$AUTH" 2>/dev/null || echo '${pub//\'/\'\\\'\'}' >> "\$AUTH"
+chown slurmadmin:slurmadmin "\$AUTH"
+chmod 600 "\$AUTH"
+REMOTE
+  if "${SSH[@]}" "slurmadmin@${LOGIN_IP}" 'echo ok' 2>/dev/null; then
+    LOGIN_SSH_USER=slurmadmin
+    echo "  slurmadmin SSH on login OK"
+  else
+    echo "WARN: slurmadmin still unavailable on login — using ${LOGIN_SSH_USER}" >&2
+  fi
+}
+
 echo "==> Wait for controllers"
 wait_ssh "$CTRL1_IP" "$CTRL1"
 wait_ssh "$CTRL2_IP" "$CTRL2"
@@ -127,6 +164,7 @@ wait_ssh_optional "$LOGIN_IP" "$LOGIN"
 if [[ "$LOGIN_REACHABLE" != true ]]; then
   try_ssh_ip "10.0.1.10" true && echo "  login reachable via private 10.0.1.10"
 fi
+ensure_login_slurmadmin
 
 echo "==> Sync Slurm configs and scripts from repo"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -153,7 +191,7 @@ sync_assets() {
     "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "${CTRL1}:/tmp/slurm-hybrid-assets.tgz"
     run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/slurm-hybrid-assets.tgz slurmadmin@${ip}:/tmp/"
   else
-    "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "slurmadmin@${ip}:/tmp/"
+    scp_to_host "$ip" /tmp/slurm-hybrid-assets.tgz /tmp/
   fi
   run_host "$ip" sudo tar xzf /tmp/slurm-hybrid-assets.tgz -C /
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
