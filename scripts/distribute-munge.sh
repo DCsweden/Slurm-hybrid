@@ -2,7 +2,8 @@
 # Distribute Munge key from ctrl1 to all Slurm nodes
 set -euo pipefail
 
-KEY="${SSH_KEY:-${KEY:-$HOME/.ssh/cluster_key}}"
+KEY="${SSH_KEY:-${KEY:-${HOME}/.ssh/cluster_key}}"
+KEY="${KEY/#\~/$HOME}"
 CTRL1_IP="${CTRL1_IP:-16.16.58.152}"
 CTRL1="slurmadmin@${CTRL1_IP}"
 

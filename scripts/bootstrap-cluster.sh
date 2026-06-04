@@ -2,7 +2,13 @@
 # Full Slurm cluster bootstrap — run from GitHub Actions after terraform apply
 set -euo pipefail
 
-KEY="${SSH_KEY:-$HOME/.ssh/cluster_key}"
+KEY="${SSH_KEY:-${HOME}/.ssh/cluster_key}"
+# Expand ~ if passed from workflow
+KEY="${KEY/#\~/$HOME}"
+if [[ ! -f "$KEY" ]]; then
+  echo "SSH key not found: $KEY" >&2
+  exit 1
+fi
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=30)
 SCP=(scp -i "$KEY" -o StrictHostKeyChecking=no)
 
@@ -46,7 +52,8 @@ echo "==> Wait for nodes"
 for t in "$CTRL1" "$CTRL2" "$LOGIN"; do wait_ssh "$t"; done
 
 echo "==> Install cluster SSH key on ctrl1 for internal hops"
-"${SCP[@]}" "$KEY" "${CTRL1}:~/.ssh/id_cluster"
+run_ctrl1 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
+"${SCP[@]}" "$KEY" "${CTRL1}:.ssh/id_cluster"
 run_ctrl1 'chmod 600 ~/.ssh/id_cluster'
 
 echo "==> Munge: install packages and sync key"

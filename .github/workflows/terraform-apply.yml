@@ -145,10 +145,12 @@ jobs:
           terraform output -raw power_save_gcp_key > /tmp/gcp-sa.json
 
       - name: Setup SSH private key
+        id: sshkey
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/cluster_key
-          chmod 600 ~/.ssh/cluster_key
+          install -m 700 -d "${{ runner.temp }}/ssh"
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > "${{ runner.temp }}/ssh/cluster_key"
+          chmod 600 "${{ runner.temp }}/ssh/cluster_key"
+          echo "path=${{ runner.temp }}/ssh/cluster_key" >> "$GITHUB_OUTPUT"
 
       - name: Resolve DB password
         working-directory: terraform
@@ -161,7 +163,7 @@ jobs:
 
       - name: Run bootstrap-cluster.sh
         env:
-          SSH_KEY: ~/.ssh/cluster_key
+          SSH_KEY: ${{ steps.sshkey.outputs.path }}
           CTRL1_IP: ${{ steps.tf.outputs.ctrl1 }}
           CTRL2_IP: ${{ steps.tf.outputs.ctrl2 }}
           LOGIN_IP: ${{ steps.tf.outputs.login }}
@@ -171,7 +173,8 @@ jobs:
           GCP_SA_KEY_FILE: /tmp/gcp-sa.json
         run: |
           chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh
-          bash scripts/bootstrap-cluster.sh | tee bootstrap.log
+          set -o pipefail
+          bash scripts/bootstrap-cluster.sh 2>&1 | tee bootstrap.log
 
       - name: Bootstrap summary
         run: |
