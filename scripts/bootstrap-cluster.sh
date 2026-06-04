@@ -158,6 +158,13 @@ REMOTE
   run_ctrl1 "ssh -i ${CLUSTER_KEY} -o BatchMode=yes slurmadmin@10.0.1.10 echo ready"
 fi
 
+if [[ "$LOGIN_REACHABLE" == true ]]; then
+  echo "==> Install cluster SSH key on login (hop to 10.0.x / 10.1.x)"
+  run_login 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
+  "${SCP[@]}" "$KEY" "${LOGIN}:.ssh/id_cluster"
+  run_login 'chmod 600 ~/.ssh/id_cluster'
+fi
+
 echo "==> Sync Slurm configs and scripts from repo"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGING=$(mktemp -d)

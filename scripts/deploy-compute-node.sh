@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy Munge + Slurm to a compute node from packages on ctrl1.
-# AWS: ctrl1 SSH hop over hybrid VPN (private IP).
-# GCP: try VPN hop first; fall back to gcloud IAP from CI (needs IAP firewall + CI SA role).
+# AWS: ctrl1 SSH hop (private IP over AWS VPC).
+# GCP: IAP from CI (primary), VPN via ctrl1 (fallback when hybrid tunnel is up).
 set -euo pipefail
 
 KEY="${SSH_KEY:-${HOME}/.ssh/cluster_key}"
@@ -16,7 +16,8 @@ GCP_PROJECT="${GCP_PROJECT:-dcprod}"
 GCP_ZONE="${GCP_ZONE:-europe-north2-a}"
 GCP_INSTANCE="${GCP_INSTANCE:-gcp-compute}"
 SLURM_VERSION="${SLURM_VERSION:-24.05.3}"
-VPN_SSH_ATTEMPTS="${VPN_SSH_ATTEMPTS:-18}"
+VPN_SSH_ATTEMPTS="${VPN_SSH_ATTEMPTS:-12}"
+IAP_ATTEMPTS="${IAP_ATTEMPTS:-5}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -42,24 +43,8 @@ case "$MODE" in
   *) echo "unknown mode: $MODE" >&2; exit 1 ;;
 esac
 
-wait_compute_ssh_via_vpn() {
-  echo "==> Wait for SSH to ${NODE_NAME} (${TARGET_IP}) via ctrl1/VPN"
-  for i in $(seq 1 "$VPN_SSH_ATTEMPTS"); do
-    if run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=5 slurmadmin@${TARGET_IP} echo ok" 2>/dev/null; then
-      echo "  VPN path ready"
-      return 0
-    fi
-    if (( i % 6 == 0 )); then echo "  still waiting (${i}/${VPN_SSH_ATTEMPTS}) — VPN or startup?" >&2; fi
-    sleep 10
-  done
-  return 1
-}
-
-deploy_via_vpn() {
-  echo "==> Deploy -> ${NODE_NAME} (${TARGET_IP}) via ctrl1"
-  "${SCP[@]}" "$WORK/compute-bundle.tgz" "${CTRL1}:/tmp/compute-bundle.tgz"
-  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/compute-bundle.tgz slurmadmin@${TARGET_IP}:/tmp/"
-  run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@${TARGET_IP}" <<REMOTE
+run_remote_install_cmd() {
+  cat <<REMOTE
 set -euo pipefail
 sudo rm -rf /tmp/slurm-compute-bundle && sudo mkdir -p /tmp/slurm-compute-bundle
 sudo tar xzf /tmp/compute-bundle.tgz -C /tmp/slurm-compute-bundle
@@ -68,29 +53,65 @@ sudo -E bash /tmp/slurm-compute-bundle/install.sh
 REMOTE
 }
 
+wait_compute_ssh_via_vpn() {
+  echo "==> Wait for SSH to ${NODE_NAME} (${TARGET_IP}) via ctrl1/VPN"
+  for i in $(seq 1 "$VPN_SSH_ATTEMPTS"); do
+    if run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=5 slurmadmin@${TARGET_IP} echo ok" 2>/dev/null; then
+      echo "  VPN path ready"
+      return 0
+    fi
+    if (( i % 4 == 0 )); then echo "  still waiting (${i}/${VPN_SSH_ATTEMPTS})" >&2; fi
+    sleep 10
+  done
+  return 1
+}
+
+deploy_via_vpn() {
+  echo "==> Deploy -> ${NODE_NAME} (${TARGET_IP}) via ctrl1/VPN"
+  "${SCP[@]}" "$WORK/compute-bundle.tgz" "${CTRL1}:/tmp/compute-bundle.tgz"
+  run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/compute-bundle.tgz slurmadmin@${TARGET_IP}:/tmp/"
+  run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no slurmadmin@${TARGET_IP}" <<REMOTE
+$(run_remote_install_cmd)
+REMOTE
+}
+
 deploy_via_iap() {
   if ! command -v gcloud >/dev/null 2>&1; then
-    echo "gcloud not available for IAP fallback" >&2
+    echo "gcloud not available for IAP deploy" >&2
     return 1
   fi
-  echo "==> Deploy -> ${NODE_NAME} (${GCP_INSTANCE}) via IAP (cluster SSH key)"
-  local scp_flags=(--tunnel-through-iap --project="$GCP_PROJECT" --zone="$GCP_ZONE"
-    --ssh-key-file="$KEY" --scp-flag="-l slurmadmin -o StrictHostKeyChecking=no")
-  local ssh_flags=(--tunnel-through-iap --project="$GCP_PROJECT" --zone="$GCP_ZONE"
-    --ssh-key-file="$KEY" --ssh-flag="-l slurmadmin -o StrictHostKeyChecking=no")
 
-  gcloud compute scp "${scp_flags[@]}" \
-    "$WORK/compute-bundle.tgz" "${GCP_INSTANCE}:/tmp/compute-bundle.tgz"
-  gcloud compute ssh "${ssh_flags[@]}" "$GCP_INSTANCE" --command="
-set -euo pipefail
-sudo rm -rf /tmp/slurm-compute-bundle && sudo mkdir -p /tmp/slurm-compute-bundle
-sudo tar xzf /tmp/compute-bundle.tgz -C /tmp/slurm-compute-bundle
-export NODE_NAME='${NODE_NAME}' CLOUD_PROVIDER='${CLOUD_PROVIDER}' INSTANCE_ID='${INSTANCE_ID}' SLURM_VERSION='${SLURM_VERSION}'
-sudo -E bash /tmp/slurm-compute-bundle/install.sh"
+  echo "==> Deploy -> ${NODE_NAME} (${GCP_INSTANCE}) via IAP"
+  export CLOUDSDK_COMPUTE_SSH_KEY_FILE="$KEY"
+
+  local remote_install
+  remote_install="sudo rm -rf /tmp/slurm-compute-bundle && sudo mkdir -p /tmp/slurm-compute-bundle && sudo tar xzf /tmp/compute-bundle.tgz -C /tmp/slurm-compute-bundle && export NODE_NAME='${NODE_NAME}' CLOUD_PROVIDER='${CLOUD_PROVIDER}' INSTANCE_ID='${INSTANCE_ID}' SLURM_VERSION='${SLURM_VERSION}' && sudo -E bash /tmp/slurm-compute-bundle/install.sh"
+
+  for attempt in $(seq 1 "$IAP_ATTEMPTS"); do
+    echo "  IAP attempt ${attempt}/${IAP_ATTEMPTS}"
+    if gcloud compute scp "$WORK/compute-bundle.tgz" \
+        "slurmadmin@${GCP_INSTANCE}:/tmp/compute-bundle.tgz" \
+        --project="$GCP_PROJECT" --zone="$GCP_ZONE" \
+        --tunnel-through-iap --ssh-key-file="$KEY" --quiet \
+        --scp-flag="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" 2>&1 \
+      && gcloud compute ssh "slurmadmin@${GCP_INSTANCE}" \
+        --project="$GCP_PROJECT" --zone="$GCP_ZONE" \
+        --tunnel-through-iap --ssh-key-file="$KEY" --quiet \
+        --ssh-flag="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+        --command="$remote_install" 2>&1; then
+      echo "  IAP deploy OK"
+      return 0
+    fi
+    if (( attempt < IAP_ATTEMPTS )); then
+      echo "  IAP failed — retry in 30s (IAM/firewall may still be propagating)" >&2
+      sleep 30
+    fi
+  done
+  return 1
 }
 
 log_vpn_diagnostics() {
-  echo "==> VPN diagnostics (for manual follow-up)" >&2
+  echo "==> VPN diagnostics" >&2
   if command -v aws >/dev/null 2>&1; then
     aws ec2 describe-vpn-connections \
       --filters "Name=tag:Name,Values=${CLUSTER_NAME:-slurm-hybrid}-vpn-gcp" \
@@ -138,12 +159,14 @@ if [[ "$MODE" == aws" ]]; then
   wait_compute_ssh_via_vpn || { log_vpn_diagnostics; exit 1; }
   deploy_via_vpn
 elif [[ "$MODE" == gcp" ]]; then
-  if wait_compute_ssh_via_vpn; then
-    deploy_via_vpn
+  if deploy_via_iap; then
+    :
+  elif wait_compute_ssh_via_vpn && deploy_via_vpn; then
+    echo "  (used VPN fallback)"
   else
-    echo "WARN: VPN SSH to ${TARGET_IP} timed out — trying IAP fallback" >&2
     log_vpn_diagnostics
-    deploy_via_iap || { echo "GCP deploy failed (VPN and IAP)" >&2; exit 1; }
+    echo "GCP deploy failed (IAP and VPN)" >&2
+    exit 1
   fi
 fi
 

@@ -23,7 +23,9 @@ resource "google_compute_instance" "compute" {
   }
 
   metadata = {
-    ssh-keys = "slurmadmin:${var.ssh_public_key}"
+    ssh-keys         = "slurmadmin:${var.ssh_public_key}"
+    enable-oslogin   = "FALSE"
+    block-project-ssh-keys = "false"
   }
 
   metadata_startup_script = templatefile("${path.module}/startup-compute.sh.tpl", {

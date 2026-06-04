@@ -66,4 +66,6 @@ module "gcp" {
   instance_type_compute = var.instance_type_gcp_compute
   compute_hostname                = local.gcp_compute_hostname
   github_ci_service_account_email = local.github_ci_sa_email
+  aws_vpn_peer_ip                 = aws_vpn_connection.gcp.tunnel1_address
+  vpn_shared_secret               = module.aws.vpn_preshared_key
 }
