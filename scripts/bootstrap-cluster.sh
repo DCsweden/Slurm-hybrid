@@ -188,24 +188,19 @@ sync_assets() {
   else
     scp_to_host "$ip" /tmp/slurm-hybrid-assets.tgz "$tgz"
   fi
-  run_host "$ip" sudo tar xzf "$tgz" -C /
-  run_host "$ip" 'sudo bash -s' <<'REMOTE'
-set -e
-repair_path() {
-  local p="$1"
-  [[ -e "$p" || -d "$p" ]] || return 0
-  if [[ "$(stat -c '%U:%G' "$p")" != "root:root" ]]; then
-    echo "WARN: repairing ownership of $p"
-    chown root:root "$p"
-  fi
-  if [[ "$(stat -c '%a' "$p")" != "755" ]]; then
-    chmod 755 "$p"
-  fi
-}
-repair_path /
-repair_path /etc
-repair_path /usr
-repair_path /opt
+  # Never tar -C / — archive etc/ metadata overwrites /etc ownership and breaks munge.
+  run_host "$ip" "sudo bash -s" <<REMOTE
+set -euo pipefail
+TGZ='${tgz//\'/\'\\\'\'}'
+STAGING=\$(mktemp -d)
+trap 'rm -rf "\$STAGING"' EXIT
+tar xzf "\$TGZ" -C "\$STAGING"
+install -d -m 755 /etc/slurm /opt/slurm-hybrid /usr/sbin
+cp -a "\$STAGING/etc/slurm/." /etc/slurm/
+cp -a "\$STAGING/opt/slurm-hybrid/." /opt/slurm-hybrid/
+cp -a "\$STAGING/usr/sbin/." /usr/sbin/
+chown root:root / /etc /usr /opt
+chmod 755 / /etc /usr /opt
 REMOTE
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
   run_host "$ip" sudo rm -f "$tgz"
