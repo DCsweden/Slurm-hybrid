@@ -42,7 +42,10 @@ resource "google_compute_vpn_tunnel" "aws_tunnel1" {
   shared_secret = module.aws.vpn_preshared_key
   ike_version   = 2
 
-  depends_on = [aws_vpn_connection.gcp]
+  depends_on = [
+    aws_vpn_connection.gcp,
+    module.gcp,
+  ]
 }
 
 # Route GCP compute subnet traffic to AWS via VPN tunnel

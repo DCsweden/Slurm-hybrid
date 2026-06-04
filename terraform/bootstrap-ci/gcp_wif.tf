@@ -53,3 +53,10 @@ resource "google_project_iam_member" "github_ci_iam" {
   role    = "roles/iam.serviceAccountUser"
   member  = "serviceAccount:${google_service_account.github_ci.email}"
 }
+
+# Required for Terraform to bind roles on project service accounts
+resource "google_project_iam_member" "github_ci_project_iam" {
+  project = var.gcp_project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.github_ci.email}"
+}

@@ -55,7 +55,7 @@ variable "instance_type_aws_compute" {
 
 variable "instance_type_gcp_compute" {
   type    = string
-  default = "n2-standard-4"
+  default = "e2-standard-4"
 }
 
 variable "aws_vpc_cidr" {
