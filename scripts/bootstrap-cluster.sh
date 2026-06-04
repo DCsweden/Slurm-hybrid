@@ -201,7 +201,7 @@ REMOTE
   run_host "$ip" sudo rm -f "$tgz"
 }
 
-for ip in "$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP"; do
+for ip in "$CTRL1_IP" "$CTRL2_IP" "$LOGIN_IP" "$AWS_COMPUTE_IP"; do
   if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_REACHABLE" != true ]]; then
     echo "  skip assets -> login (unreachable)"
     continue

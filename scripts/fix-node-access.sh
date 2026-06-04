@@ -14,40 +14,33 @@ fi
 
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=30)
 
-echo "==> Fix node access: $IP (via ubuntu)"
-"${SSH[@]}" "ubuntu@${IP}" "bash -s" <<REMOTE
+SSH_USER=ubuntu
+if "${SSH[@]}" "slurmadmin@${IP}" 'echo ok' 2>/dev/null; then
+  SSH_USER=slurmadmin
+fi
+
+echo "==> Fix node access: $IP (via ${SSH_USER})"
+"${SSH[@]}" "${SSH_USER}@${IP}" "sudo bash -s" <<REMOTE
 set -euo pipefail
 PUB='${PUB//\'/\'\\\'\'}'
 H=\$(hostname)
-
-run_root() {
-  if sudo -n "\$@" 2>/dev/null; then
-    return 0
-  fi
-  if [[ "\$(id -u)" -eq 0 ]]; then
-    "\$@"
-    return \$?
-  fi
-  echo "ERROR: need root (sudo broken — replace this EC2 instance)" >&2
-  return 1
-}
 
 # Phase 1: fix / without sudo when ubuntu owns it (tarball corruption)
 if [[ "\$(stat -c '%U' /)" == "ubuntu" ]]; then
   chmod 755 / || true
 fi
 
-# Phase 2: restore sudo if setuid was stripped
-if [[ -f /usr/bin/sudo ]] && [[ "\$(stat -c '%a' /usr/bin/sudo)" != "4755" ]]; then
-  run_root chmod 4755 /usr/bin/sudo
+# Phase 2: restore sudo setuid only when actually missing
+if [[ -f /usr/bin/sudo ]] && [[ ! -u /usr/bin/sudo ]]; then
+  chmod 4755 /usr/bin/sudo
 fi
 if ! sudo -n true 2>/dev/null; then
-  echo "ERROR: sudo still broken on \${H} — run: terraform apply -replace=module.aws.aws_instance.login" >&2
+  echo "ERROR: sudo broken on \${H} — replace EC2 instance (terraform apply -replace)" >&2
   exit 1
 fi
 
-run_root chmod 755 /
-run_root chown root:root /
+chmod 755 /
+chown root:root /
 ROOT_PERM=\$(stat -c '%a' /)
 ROOT_OWNER=\$(stat -c '%U:%G' /)
 if [[ "\$ROOT_PERM" != "755" || "\$ROOT_OWNER" != "root:root" ]]; then
@@ -55,36 +48,36 @@ if [[ "\$ROOT_PERM" != "755" || "\$ROOT_OWNER" != "root:root" ]]; then
   exit 1
 fi
 
-run_root bash -c 'grep -q "\${H}" /etc/hosts || echo "127.0.1.1 \${H}" >> /etc/hosts'
+grep -q "\${H}" /etc/hosts || echo "127.0.1.1 \${H}" >> /etc/hosts
 
 if ! id slurmadmin &>/dev/null; then
-  run_root useradd -m -s /bin/bash -G sudo slurmadmin
-  echo 'slurmadmin ALL=(ALL) NOPASSWD:ALL' | run_root tee /etc/sudoers.d/90-slurmadmin >/dev/null
-  run_root chmod 440 /etc/sudoers.d/90-slurmadmin
+  useradd -m -s /bin/bash -G sudo slurmadmin
+  echo 'slurmadmin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-slurmadmin
+  chmod 440 /etc/sudoers.d/90-slurmadmin
 fi
-run_root passwd -d slurmadmin >/dev/null 2>&1 || true
+passwd -d slurmadmin >/dev/null 2>&1 || true
 
-run_root install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
+install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
 AUTH=/home/slurmadmin/.ssh/authorized_keys
-run_root touch "\$AUTH"
-run_root bash -c 'grep -qxF "\$PUB" "\$AUTH" 2>/dev/null || echo "\$PUB" >> "\$AUTH"'
+touch "\$AUTH"
+grep -qxF "\$PUB" "\$AUTH" 2>/dev/null || echo "\$PUB" >> "\$AUTH"
 if [[ -f /home/ubuntu/.ssh/authorized_keys ]]; then
   while read -r line; do
-    [[ -n "\$line" ]] && ! sudo grep -qxF "\$line" "\$AUTH" 2>/dev/null && echo "\$line" | sudo tee -a "\$AUTH" >/dev/null
+    [[ -n "\$line" ]] && ! grep -qxF "\$line" "\$AUTH" 2>/dev/null && echo "\$line" >> "\$AUTH"
   done < /home/ubuntu/.ssh/authorized_keys
 fi
-run_root chown -R slurmadmin:slurmadmin /home/slurmadmin/.ssh
-run_root chmod 600 "\$AUTH"
+chown -R slurmadmin:slurmadmin /home/slurmadmin/.ssh
+chmod 600 "\$AUTH"
 
 for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
   [[ -f "\$f" ]] || continue
-  if sudo grep -q '^AllowUsers' "\$f" && ! sudo grep -q 'slurmadmin' "\$f"; then
-    sudo sed -i 's/^AllowUsers\(.*\)$/AllowUsers\1 slurmadmin/' "\$f"
+  if grep -q '^AllowUsers' "\$f" && ! grep -q 'slurmadmin' "\$f"; then
+    sed -i 's/^AllowUsers\(.*\)$/AllowUsers\1 slurmadmin/' "\$f"
   fi
 done
-sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd 2>/dev/null || true
+systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 
-if ! sudo runuser -u slurmadmin -- true 2>/dev/null; then
+if ! runuser -u slurmadmin -- true 2>/dev/null; then
   echo "ERROR: slurmadmin cannot execute (check / permissions: \$(stat -c '%a %U:%G' /))" >&2
   exit 1
 fi
