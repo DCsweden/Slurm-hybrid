@@ -306,7 +306,14 @@ else
 fi
 
 echo "==> Deploy compute nodes (offline bundle from ctrl1)"
-export SSH_KEY="$KEY"
+export SSH_KEY="$KEY" GCP_PROJECT GCP_ZONE GCP_INSTANCE CLUSTER_NAME
+if command -v aws >/dev/null 2>&1; then
+  echo "==> Hybrid VPN status"
+  aws ec2 describe-vpn-connections \
+    --filters "Name=tag:Name,Values=${CLUSTER_NAME}-vpn-gcp" \
+    --query 'VpnConnections[0].VgwTelemetry[0].Status' --output text 2>/dev/null \
+    | xargs -I{} echo "  AWS tunnel: {}" || true
+fi
 bash "$(dirname "$0")/deploy-compute-node.sh" aws "${AWS_COMPUTE_IP}"
 bash "$(dirname "$0")/deploy-compute-node.sh" gcp
 

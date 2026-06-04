@@ -80,3 +80,9 @@ variable "allowed_ssh_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "github_ci_service_account_email" {
+  description = "GitHub Actions GCP SA email for IAP bootstrap (default: github-slurm-hybrid-ci@PROJECT)"
+  type        = string
+  default     = ""
+}

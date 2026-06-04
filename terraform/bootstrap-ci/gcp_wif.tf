@@ -60,3 +60,10 @@ resource "google_project_iam_member" "github_ci_project_iam" {
   role    = "roles/resourcemanager.projectIamAdmin"
   member  = "serviceAccount:${google_service_account.github_ci.email}"
 }
+
+# gcloud compute scp/ssh --tunnel-through-iap during Slurm bootstrap
+resource "google_project_iam_member" "github_ci_iap_tunnel" {
+  project = var.gcp_project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = "serviceAccount:${google_service_account.github_ci.email}"
+}

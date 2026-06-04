@@ -166,8 +166,10 @@ jobs:
           AWS_COMPUTE_INSTANCE_ID: ${{ steps.tf.outputs.aws_compute_id }}
           AWS_COMPUTE_IP: ${{ steps.tf.outputs.aws_compute_ip }}
           GCP_COMPUTE_IP: ${{ steps.tf.outputs.gcp_compute_ip }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT_ID }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           GCP_SA_KEY_FILE: /tmp/gcp-sa.json
+          CLUSTER_NAME: slurm-hybrid
         run: |
           chmod +x scripts/bootstrap-cluster.sh scripts/deploy-compute-node.sh scripts/distribute-munge.sh scripts/repair-slurmadmin-ssh.sh scripts/fix-node-access.sh
           set -o pipefail

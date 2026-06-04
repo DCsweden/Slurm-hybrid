@@ -15,3 +15,9 @@ variable "compute_private_ip" {
   default = "10.1.1.10"
 }
 
+variable "github_ci_service_account_email" {
+  description = "GitHub Actions CI SA (WIF) — granted IAP tunnel access for bootstrap"
+  type        = string
+  default     = ""
+}
+

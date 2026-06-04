@@ -17,6 +17,7 @@ locals {
   cluster_name = var.project_name
   db_password  = var.db_password != "" ? var.db_password : random_password.db[0].result
   allowed_ssh_cidr = var.allowed_ssh_cidr != "" ? var.allowed_ssh_cidr : "0.0.0.0/0"
+  github_ci_sa_email = var.github_ci_service_account_email != "" ? var.github_ci_service_account_email : "github-slurm-hybrid-ci@${var.gcp_project_id}.iam.gserviceaccount.com"
 
   login_hostname     = "login"
   ctrl1_hostname     = "ctrl1"
@@ -63,5 +64,6 @@ module "gcp" {
   ssh_public_key        = var.ssh_public_key
   slurm_version         = var.slurm_version
   instance_type_compute = var.instance_type_gcp_compute
-  compute_hostname      = local.gcp_compute_hostname
+  compute_hostname                = local.gcp_compute_hostname
+  github_ci_service_account_email = local.github_ci_sa_email
 }
