@@ -223,6 +223,10 @@ Konfigurerat enligt [power_save.html](https://slurm.schedmd.com/power_save.html)
 - `ResumeTimeout=600`, `SuspendTimeout=120`
 - Hybrid-mönster: cloud-noder i egen partition med suspend — se avsnitt *Hybrid Cluster* i guiden
 
+## AWS VPC
+
+Endast **en** AWS VPC ska finnas för detta repo: Terraform skapar och hanterar `slurm-hybrid-aws-vpc` i `eu-north-1` (`terraform/modules/aws/`). En äldre tom VPC med namnet `slurm-hpc-cluster-vpc` var en **orphan** (lämnad kvar utanför Terraform) och har tagits bort manuellt så att den inte förväxlas med den aktiva VPC:n.
+
 ## Felsökning VPN
 
 ```bash
