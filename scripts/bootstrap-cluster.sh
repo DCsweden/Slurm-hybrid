@@ -111,18 +111,47 @@ ensure_login_slurmadmin() {
   pub=$(ssh-keygen -y -f "$KEY")
   run_login "sudo bash -s" <<REMOTE
 set -e
+H=\$(hostname)
+grep -q "\${H}" /etc/hosts || echo "127.0.1.1 \${H}" >> /etc/hosts
+if ! id slurmadmin &>/dev/null; then
+  useradd -m -s /bin/bash -G sudo slurmadmin
+  echo 'slurmadmin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-slurmadmin
+  chmod 440 /etc/sudoers.d/90-slurmadmin
+fi
 install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
 AUTH=/home/slurmadmin/.ssh/authorized_keys
 touch "\$AUTH"
-grep -qxF '${pub//\'/\'\\\'\'}' "\$AUTH" 2>/dev/null || echo '${pub//\'/\'\\\'\'}' >> "\$AUTH"
-chown slurmadmin:slurmadmin "\$AUTH"
+PUB='${pub//\'/\'\\\'\'}'
+grep -qxF "\$PUB" "\$AUTH" 2>/dev/null || echo "\$PUB" >> "\$AUTH"
+if [[ -f /home/ubuntu/.ssh/authorized_keys ]]; then
+  while read -r line; do
+    [[ -n "\$line" ]] && ! grep -qxF "\$line" "\$AUTH" 2>/dev/null && echo "\$line" >> "\$AUTH"
+  done < /home/ubuntu/.ssh/authorized_keys
+fi
+chown -R slurmadmin:slurmadmin /home/slurmadmin/.ssh
 chmod 600 "\$AUTH"
+for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+  [[ -f "\$f" ]] || continue
+  if grep -q '^AllowUsers' "\$f" && ! grep -q 'slurmadmin' "\$f"; then
+    sed -i 's/^AllowUsers\(.*\)$/AllowUsers\1 slurmadmin/' "\$f"
+  fi
+done
+systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 REMOTE
   if "${SSH[@]}" "slurmadmin@${LOGIN_IP}" 'echo ok' 2>/dev/null; then
     LOGIN_SSH_USER=slurmadmin
     echo "  slurmadmin SSH on login OK"
   else
     echo "WARN: slurmadmin still unavailable on login — using ${LOGIN_SSH_USER}" >&2
+  fi
+}
+
+remote_asset_path() {
+  local ip="$1"
+  if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_SSH_USER" == ubuntu ]]; then
+    echo "/home/ubuntu/slurm-hybrid-assets.tgz"
+  else
+    echo "/tmp/slurm-hybrid-assets.tgz"
   fi
 }
 
@@ -186,16 +215,19 @@ rm -rf "$STAGING"
 
 sync_assets() {
   local ip="$1"
-  echo "  assets -> $ip"
+  local tgz
+  tgz=$(remote_asset_path "$ip")
+  echo "  assets -> $ip ($tgz)"
   if is_private_ip "$ip"; then
     "${SCP[@]}" /tmp/slurm-hybrid-assets.tgz "${CTRL1}:/tmp/slurm-hybrid-assets.tgz"
     run_ctrl1 "scp -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no /tmp/slurm-hybrid-assets.tgz slurmadmin@${ip}:/tmp/"
+    tgz="/tmp/slurm-hybrid-assets.tgz"
   else
-    scp_to_host "$ip" /tmp/slurm-hybrid-assets.tgz /tmp/
+    scp_to_host "$ip" /tmp/slurm-hybrid-assets.tgz "$tgz"
   fi
-  run_host "$ip" sudo tar xzf /tmp/slurm-hybrid-assets.tgz -C /
+  run_host "$ip" sudo tar xzf "$tgz" -C /
   run_host "$ip" sudo chmod +x /opt/slurm-hybrid/install-slurm.sh /opt/slurm-hybrid/bootstrap-controller.sh /opt/slurm-hybrid/bootstrap-login.sh /opt/slurm-hybrid/bootstrap-compute.sh /usr/sbin/slurm_resume /usr/sbin/slurm_suspend /usr/sbin/slurm_resume_fail
-  run_host "$ip" sudo rm -f /tmp/slurm-hybrid-assets.tgz
+  run_host "$ip" sudo rm -f "$tgz"
 }
 
 for ip in "$LOGIN_IP" "$CTRL1_IP" "$CTRL2_IP" "$AWS_COMPUTE_IP"; do
@@ -221,7 +253,7 @@ export SSH_KEY="$KEY" CTRL1_IP
 PRIVATE_IPS="10.0.1.10 10.0.1.12 ${AWS_COMPUTE_IP}" bash "$(dirname "$0")/repair-slurmadmin-ssh.sh" || true
 
 echo "==> Munge: install packages and sync key"
-export SSH_KEY="$KEY" CTRL1_IP LOGIN_IP CTRL2_IP AWS_COMPUTE_IP GCP_COMPUTE_IP
+export SSH_KEY="$KEY" CTRL1_IP LOGIN_IP CTRL2_IP AWS_COMPUTE_IP GCP_COMPUTE_IP LOGIN_SSH_USER
 bash "$(dirname "$0")/distribute-munge.sh"
 
 echo "==> Build Slurm on ctrl1 (primary)"
