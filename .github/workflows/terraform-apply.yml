@@ -169,7 +169,7 @@ jobs:
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           GCP_SA_KEY_FILE: /tmp/gcp-sa.json
         run: |
-          chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh scripts/repair-slurmadmin-ssh.sh
+          chmod +x scripts/bootstrap-cluster.sh scripts/distribute-munge.sh scripts/repair-slurmadmin-ssh.sh scripts/fix-node-access.sh
           set -o pipefail
           bash scripts/bootstrap-cluster.sh 2>&1 | tee bootstrap.log
 

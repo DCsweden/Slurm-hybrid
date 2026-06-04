@@ -30,55 +30,48 @@ CTRL2="slurmadmin@${CTRL2_IP}"
 LOGIN="slurmadmin@${LOGIN_IP}"
 
 LOGIN_REACHABLE=false
-LOGIN_SSH_USER=slurmadmin
-LOGIN_SSH_IP=""
 
-try_ssh_ip() {
+try_ssh_user() {
   local ip="$1"
-  local track_login="${2:-false}"
-  for user in slurmadmin ubuntu; do
-    if "${SSH[@]}" "${user}@${ip}" 'echo ready' 2>/dev/null; then
-      if [[ "$track_login" == true ]]; then
-        LOGIN_SSH_USER="$user"
-        LOGIN_SSH_IP="$ip"
-        LOGIN_REACHABLE=true
-      fi
-      return 0
-    fi
-  done
-  return 1
+  local user="$2"
+  "${SSH[@]}" "${user}@${ip}" 'echo ready' 2>/dev/null
 }
 
-wait_ssh() {
+wait_ssh_any() {
   local ip="$1"
-  local label="${2:-slurmadmin@${ip}}"
-  echo "Waiting for SSH: $label"
+  local optional="${2:-false}"
+  echo "Waiting for SSH: ${ip}"
   for i in $(seq 1 60); do
-    if try_ssh_ip "$ip" false; then
-      echo "  ready (slurmadmin@${ip})"
-      return 0
-    fi
+    for user in slurmadmin ubuntu; do
+      if try_ssh_user "$ip" "$user"; then
+        echo "  ready (${user}@${ip})"
+        return 0
+      fi
+    done
     if (( i % 6 == 0 )); then echo "  still waiting (${i}/60)..."; fi
     sleep 10
   done
-  echo "Timeout waiting for $label" >&2
+  if [[ "$optional" == true ]]; then
+    echo "WARN: ${ip} not reachable yet"
+    return 1
+  fi
+  echo "Timeout waiting for ${ip}" >&2
   exit 1
 }
 
-wait_ssh_optional() {
+wait_ssh_slurmadmin() {
   local ip="$1"
-  local label="${2:-slurmadmin@${ip}}"
-  echo "Waiting for SSH (optional): $label"
-  for i in $(seq 1 18); do
-    if try_ssh_ip "$ip" true; then
-      echo "  ready (${LOGIN_SSH_USER}@${LOGIN_SSH_IP})"
+  echo "Waiting for slurmadmin@${ip}"
+  for i in $(seq 1 30); do
+    if try_ssh_user "$ip" slurmadmin; then
+      echo "  ready (slurmadmin@${ip})"
       return 0
     fi
-    if (( i % 3 == 0 )); then echo "  still waiting (${i}/18)..."; fi
+    if (( i % 3 == 0 )); then echo "  still waiting (${i}/30)..."; fi
     sleep 10
   done
-  echo "WARN: login not reachable yet — continuing (retry after ctrl1 setup)"
-  return 0
+  echo "Timeout waiting for slurmadmin@${ip}" >&2
+  exit 1
 }
 
 run_login() {
@@ -86,78 +79,37 @@ run_login() {
     echo "SKIP login: not reachable" >&2
     return 0
   fi
-  "${SSH[@]}" "${LOGIN_SSH_USER}@${LOGIN_IP}" "$@"
+  if is_private_ip "$LOGIN_IP"; then
+    local remote_cmd
+    printf -v remote_cmd '%q ' "$@"
+    run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=30 slurmadmin@${LOGIN_IP} ${remote_cmd}"
+    return $?
+  fi
+  "${SSH[@]}" "$LOGIN" "$@"
 }
 
 scp_to_host() {
   local ip="$1"
   local src="$2"
   local dest="$3"
-  local user=slurmadmin
-  if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_REACHABLE" == true ]]; then
-    user="$LOGIN_SSH_USER"
-  fi
-  "${SCP[@]}" "$src" "${user}@${ip}:${dest}"
-}
-
-ensure_login_slurmadmin() {
-  [[ "$LOGIN_REACHABLE" == true ]] || return 0
-  if "${SSH[@]}" "slurmadmin@${LOGIN_IP}" 'echo ok' 2>/dev/null; then
-    LOGIN_SSH_USER=slurmadmin
-    return 0
-  fi
-  echo "==> Install slurmadmin SSH key on login (via ${LOGIN_SSH_USER})"
-  local pub
-  pub=$(ssh-keygen -y -f "$KEY")
-  run_login "sudo bash -s" <<REMOTE
-set -e
-H=\$(hostname)
-grep -q "\${H}" /etc/hosts || echo "127.0.1.1 \${H}" >> /etc/hosts
-if ! id slurmadmin &>/dev/null; then
-  useradd -m -s /bin/bash -G sudo slurmadmin
-  echo 'slurmadmin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-slurmadmin
-  chmod 440 /etc/sudoers.d/90-slurmadmin
-fi
-install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
-AUTH=/home/slurmadmin/.ssh/authorized_keys
-touch "\$AUTH"
-PUB='${pub//\'/\'\\\'\'}'
-grep -qxF "\$PUB" "\$AUTH" 2>/dev/null || echo "\$PUB" >> "\$AUTH"
-if [[ -f /home/ubuntu/.ssh/authorized_keys ]]; then
-  while read -r line; do
-    [[ -n "\$line" ]] && ! grep -qxF "\$line" "\$AUTH" 2>/dev/null && echo "\$line" >> "\$AUTH"
-  done < /home/ubuntu/.ssh/authorized_keys
-fi
-chown -R slurmadmin:slurmadmin /home/slurmadmin/.ssh
-chmod 600 "\$AUTH"
-for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
-  [[ -f "\$f" ]] || continue
-  if grep -q '^AllowUsers' "\$f" && ! grep -q 'slurmadmin' "\$f"; then
-    sed -i 's/^AllowUsers\(.*\)$/AllowUsers\1 slurmadmin/' "\$f"
-  fi
-done
-systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-REMOTE
-  if "${SSH[@]}" "slurmadmin@${LOGIN_IP}" 'echo ok' 2>/dev/null; then
-    LOGIN_SSH_USER=slurmadmin
-    echo "  slurmadmin SSH on login OK"
-  else
-    echo "WARN: slurmadmin still unavailable on login — using ${LOGIN_SSH_USER}" >&2
-  fi
+  "${SCP[@]}" "$src" "slurmadmin@${ip}:${dest}"
 }
 
 remote_asset_path() {
-  local ip="$1"
-  if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_SSH_USER" == ubuntu ]]; then
-    echo "/home/ubuntu/slurm-hybrid-assets.tgz"
-  else
-    echo "/tmp/slurm-hybrid-assets.tgz"
-  fi
+  echo "/tmp/slurm-hybrid-assets.tgz"
 }
 
-echo "==> Wait for controllers"
-wait_ssh "$CTRL1_IP" "$CTRL1"
-wait_ssh "$CTRL2_IP" "$CTRL2"
+echo "==> Wait for controllers (ubuntu or slurmadmin)"
+wait_ssh_any "$CTRL1_IP"
+wait_ssh_any "$CTRL2_IP"
+
+echo "==> Repair node access (cloud-init / filesystem)"
+export SSH_KEY="$KEY"
+for ip in "$CTRL1_IP" "$CTRL2_IP"; do
+  bash "$(dirname "$0")/fix-node-access.sh" "$ip"
+done
+wait_ssh_slurmadmin "$CTRL1_IP"
+wait_ssh_slurmadmin "$CTRL2_IP"
 
 run_ctrl1() {
   "${SSH[@]}" "$CTRL1" "$@"
@@ -189,11 +141,22 @@ run_ctrl1 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
 run_ctrl1 'chmod 600 ~/.ssh/id_cluster'
 
 echo "==> Wait for login (optional — may need new instance from Terraform)"
-wait_ssh_optional "$LOGIN_IP" "$LOGIN"
-if [[ "$LOGIN_REACHABLE" != true ]]; then
-  try_ssh_ip "10.0.1.10" true && echo "  login reachable via private 10.0.1.10"
+if wait_ssh_any "$LOGIN_IP" true; then
+  LOGIN_REACHABLE=true
+  bash "$(dirname "$0")/fix-node-access.sh" "$LOGIN_IP"
+  wait_ssh_slurmadmin "$LOGIN_IP"
+elif run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@10.0.1.10 echo ok" 2>/dev/null; then
+  echo "  login reachable via private 10.0.1.10 — using ctrl1 hop"
+  LOGIN_REACHABLE=true
+  LOGIN_IP=10.0.1.10
+  run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no ubuntu@10.0.1.10 sudo bash -s" <<'REMOTE'
+set -e
+if [[ "$(stat -c '%a' /)" != "755" ]]; then chmod 755 / && chown root:root /; fi
+passwd -d slurmadmin >/dev/null 2>&1 || true
+grep -q "$(hostname)" /etc/hosts || echo "127.0.1.1 $(hostname)" >> /etc/hosts
+REMOTE
+  run_ctrl1 "ssh -i ${CLUSTER_KEY} -o BatchMode=yes slurmadmin@10.0.1.10 echo ready"
 fi
-ensure_login_slurmadmin
 
 echo "==> Sync Slurm configs and scripts from repo"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -253,7 +216,7 @@ export SSH_KEY="$KEY" CTRL1_IP
 PRIVATE_IPS="10.0.1.10 10.0.1.12 ${AWS_COMPUTE_IP}" bash "$(dirname "$0")/repair-slurmadmin-ssh.sh" || true
 
 echo "==> Munge: install packages and sync key"
-export SSH_KEY="$KEY" CTRL1_IP LOGIN_IP CTRL2_IP AWS_COMPUTE_IP GCP_COMPUTE_IP LOGIN_SSH_USER
+export SSH_KEY="$KEY" CTRL1_IP LOGIN_IP CTRL2_IP AWS_COMPUTE_IP GCP_COMPUTE_IP
 bash "$(dirname "$0")/distribute-munge.sh"
 
 echo "==> Build Slurm on ctrl1 (primary)"

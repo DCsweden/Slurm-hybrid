@@ -4,24 +4,16 @@ package_update: true
 users:
   - default
   - name: slurmadmin
+    lock_passwd: false
     groups: sudo
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - ${ssh_public_key}
 
-write_files:
-  - path: /home/slurmadmin/.ssh/authorized_keys
-    defer: true
-    owner:
-      name: slurmadmin
-      group: slurmadmin
-    permissions: "0600"
-    content: |
-      ${ssh_public_key}
-
 packages:
   - munge
 
 runcmd:
-  - [ bash, -lc, "install -d -m 755 /opt/slurm-hybrid /etc/slurm" ]
+  - bash -lc 'grep -q "$(hostname)" /etc/hosts || echo "127.0.1.1 $(hostname)" >> /etc/hosts'
+  - bash -lc 'install -d -m 755 /opt/slurm-hybrid /etc/slurm'

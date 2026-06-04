@@ -12,7 +12,6 @@ CTRL2_IP="${CTRL2_IP:-51.20.81.87}"
 AWS_COMPUTE_IP="${AWS_COMPUTE_IP:-10.0.2.10}"
 [[ -n "${AWS_COMPUTE_IP// }" ]] || AWS_COMPUTE_IP=10.0.2.10
 GCP_COMPUTE_IP="${GCP_COMPUTE_IP:-10.1.1.10}"
-LOGIN_SSH_USER="${LOGIN_SSH_USER:-slurmadmin}"
 
 CLUSTER_KEY='/home/slurmadmin/.ssh/id_cluster'
 
@@ -40,10 +39,6 @@ run_host() {
   printf -v remote_cmd '%q ' "$@"
   if [[ "$ip" == "$GCP_COMPUTE_IP" ]]; then
     return 1
-  fi
-  if [[ "$ip" == "$LOGIN_IP" && "$LOGIN_SSH_USER" == ubuntu ]]; then
-    ssh -i "$KEY" -o StrictHostKeyChecking=no "ubuntu@${ip}" "$@"
-    return $?
   fi
   if is_private_ip "$ip"; then
     run_ctrl1 "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=30 slurmadmin@${ip} ${remote_cmd}"

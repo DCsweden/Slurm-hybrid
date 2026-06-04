@@ -28,9 +28,11 @@ install_key_ubuntu() {
   local ip="$1"
   local pub_line
   pub_line=$(head -1 "$PUB")
-  "${SSH[@]}" "$CTRL1" "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} bash -s" <<REMOTE || return 1
+  "${SSH[@]}" "$CTRL1" "ssh -i ${CLUSTER_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@${ip} sudo bash -s" <<REMOTE || return 1
 set -e
 PUB_LINE='${pub_line//\'/\'\\\'\'}'
+if [[ "\$(stat -c '%a' /)" != "755" ]]; then chmod 755 / && chown root:root /; fi
+passwd -d slurmadmin >/dev/null 2>&1 || true
 install -d -m 700 -o slurmadmin -g slurmadmin /home/slurmadmin/.ssh
 touch /home/slurmadmin/.ssh/authorized_keys
 grep -qxF "\$PUB_LINE" /home/slurmadmin/.ssh/authorized_keys 2>/dev/null || echo "\$PUB_LINE" >> /home/slurmadmin/.ssh/authorized_keys
