@@ -65,22 +65,44 @@ Apply körs vid `workflow_dispatch` och push till `main` (terraform-relaterade s
    ./scripts/bootstrap-tf-state.sh slurm-hybrid-tfstate slurm-hybrid-tflock eu-north-1
    ```
 
-2. **GitHub repository secrets** (Settings → Secrets and variables → Actions):
+2. **OIDC + Workload Identity Federation** (inga långlivade AWS/GCP-nycklar i GitHub):
+
+   ```bash
+   chmod +x scripts/bootstrap-ci-oidc.sh
+   gcloud config set project dcprod
+   ./scripts/bootstrap-ci-oidc.sh
+   ```
+
+   Det skapar (via `terraform/bootstrap-ci/`):
+
+   - AWS: OIDC-provider för `token.actions.githubusercontent.com` + IAM-roll
+   - GCP: WIF-pool/provider + service account `github-slurm-hybrid-ci@dcprod.iam.gserviceaccount.com`
+
+   Kopiera utskriften till **GitHub → Settings → Variables → Actions**:
+
+   | Variable | Exempel |
+   |----------|---------|
+   | `AWS_ROLE_ARN` | `arn:aws:iam::230278678315:role/github-slurm-hybrid-terraform` |
+   | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/…/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+   | `GCP_SERVICE_ACCOUNT` | `github-slurm-hybrid-ci@dcprod.iam.gserviceaccount.com` |
+   | `GCP_PROJECT_ID` | `dcprod` |
+
+   Ta bort gamla secrets om de finns: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `GCP_SA_KEY`.
+
+3. **GitHub repository secrets** (kvar för övrigt):
 
    | Secret | Beskrivning |
    |--------|-------------|
-   | `AWS_ACCESS_KEY_ID` | IAM-användare med rättigheter för EC2, VPC, VPN, S3 state |
-   | `AWS_SECRET_ACCESS_KEY` | |
-   | `GCP_PROJECT_ID` | GCP-projekt-ID |
-   | `GCP_SA_KEY` | Service account JSON (Compute Admin, etc.) |
    | `SSH_PUBLIC_KEY` | Publik SSH-nyckel för `slurmadmin` |
    | `TF_STATE_BUCKET` | S3-bucket från bootstrap |
    | `TF_STATE_LOCK_TABLE` | DynamoDB-tabell från bootstrap |
    | `SLURM_DB_PASSWORD` | Valfritt; annars genereras av Terraform |
 
-3. **Environments** (rekommenderat): skapa `production` och `production-destroy` med godkännare på destroy.
+4. **Environments**: `production` och `production-destroy` (OIDC `sub` tillåter dessa).
 
-4. **Repository variable** (valfritt): `ALLOWED_SSH_CIDR` — begränsa SSH till er IP (annars Terraform-default).
+5. **Repository variable** (valfritt): `ALLOWED_SSH_CIDR` — begränsa SSH till er IP.
+
+Workflows kräver `permissions: id-token: write` (redan satt) så GitHub kan utfärda OIDC-token till AWS/GCP.
 
 Lokal init med samma backend:
 

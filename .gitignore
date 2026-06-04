@@ -1,5 +1,7 @@
 .terraform/
 terraform/backend.hcl
+terraform/bootstrap-ci/terraform.tfvars
+terraform/bootstrap-ci/.terraform/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
