@@ -1,9 +1,8 @@
 # Site-to-site VPN: AWS VPC <-> GCP VPC (classic GCP VPN + AWS VGW)
 #
 # GCP tunnel + route live in modules/gcp/vpn_aws.tf (forwarding-rule depends_on).
-# If IKE is UP but packets do not flow, or after manual tunnel/connection deletes:
-#   1. ./scripts/repair-hybrid-vpn.sh plan   # review
-#   2. ./scripts/repair-hybrid-vpn.sh apply  # recreates aws_vpn_connection + GCP tunnel
+# Managed entirely by CI: push to main runs .github/workflows/terraform-apply.yml
+# (full terraform apply recreates aws_vpn_connection + GCP tunnel when drifted).
 # Do not delete only one side outside Terraform (AWS "deleted" + missing GCP tunnel = black-hole VGW routes).
 
 resource "aws_customer_gateway" "gcp" {
