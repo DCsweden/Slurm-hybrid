@@ -42,6 +42,9 @@ resource "google_compute_vpn_tunnel" "aws_tunnel1" {
   shared_secret      = module.aws.vpn_preshared_key
   ike_version        = 2
 
+  local_traffic_selector  = [var.gcp_vpc_cidr]
+  remote_traffic_selector = [var.aws_vpc_cidr]
+
   depends_on = [
     aws_vpn_connection.gcp,
     module.gcp,
