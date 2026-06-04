@@ -1,0 +1,5 @@
+bucket         = "slurm-hybrid-tfstate"
+key            = "slurm-hybrid/terraform.tfstate"
+region         = "eu-north-1"
+dynamodb_table = "slurm-hybrid-tflock"
+encrypt        = true

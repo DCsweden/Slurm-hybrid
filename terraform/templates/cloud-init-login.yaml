@@ -1,0 +1,25 @@
+#cloud-config
+package_update: true
+
+users:
+  - name: slurmadmin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /etc/slurm/slurm.conf
+    content: |
+      ${indent(6, slurm_conf)}
+  - path: /opt/slurm-hybrid/bootstrap-login.sh.b64
+    encoding: b64
+    content: ${bootstrap_login_b64}
+  - path: /opt/slurm-hybrid/install-slurm.sh.b64
+    encoding: b64
+    content: ${install_script_b64}
+
+runcmd:
+  - [ bash, -lc, "base64 -d /opt/slurm-hybrid/install-slurm.sh.b64 > /opt/slurm-hybrid/install-slurm.sh && chmod +x /opt/slurm-hybrid/install-slurm.sh && base64 -d /opt/slurm-hybrid/bootstrap-login.sh.b64 > /opt/slurm-hybrid/bootstrap-login.sh && chmod +x /opt/slurm-hybrid/bootstrap-login.sh" ]
+  - [ bash, -lc, "SLURM_VERSION=${slurm_version} /opt/slurm-hybrid/bootstrap-login.sh" ]

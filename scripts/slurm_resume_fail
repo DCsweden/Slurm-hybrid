@@ -1,0 +1,7 @@
+#!/bin/bash
+# ResumeFailProgram — mark failed resume nodes DOWN for operator review
+set -euo pipefail
+NODE_LIST="${1:-}"
+for node in $(scontrol show hostnames "$NODE_LIST" 2>/dev/null || echo "$NODE_LIST"); do
+  scontrol update NodeName="$node" State=DOWN Reason="ResumeTimeout"
+done

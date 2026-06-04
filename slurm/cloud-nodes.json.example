@@ -1,0 +1,12 @@
+{
+  "aws-compute": {
+    "provider": "aws",
+    "instance_id": "i-0123456789abcdef0",
+    "zone": ""
+  },
+  "gcp-compute": {
+    "provider": "gcp",
+    "instance_id": "gcp-compute",
+    "zone": "europe-north2-a"
+  }
+}

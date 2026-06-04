@@ -1,0 +1,47 @@
+#cloud-config
+package_update: true
+
+users:
+  - name: slurmadmin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /etc/slurm/slurm.conf
+    content: |
+      ${indent(6, slurm_conf)}
+  - path: /etc/slurm/slurmdbd.conf
+    content: |
+      ${indent(6, slurmdbd_conf)}
+  - path: /etc/slurm/cgroup.conf
+    content: |
+      ${indent(6, cgroup_conf)}
+  - path: /opt/slurm-hybrid/install-slurm.sh.b64
+    encoding: b64
+    content: ${install_script_b64}
+  - path: /opt/slurm-hybrid/bootstrap-controller.sh.b64
+    encoding: b64
+    content: ${bootstrap_script_b64}
+  - path: /usr/sbin/slurm_resume
+    permissions: '0755'
+    content: |
+      ${indent(6, resume_script)}
+  - path: /usr/sbin/slurm_suspend
+    permissions: '0755'
+    content: |
+      ${indent(6, suspend_script)}
+  - path: /usr/sbin/slurm_resume_fail
+    permissions: '0755'
+    content: |
+      ${indent(6, resume_fail_script)}
+  - path: /etc/slurm/cloud-nodes.json
+    content: |
+      ${indent(6, cloud_nodes_json)}
+
+runcmd:
+  - [ bash, -lc, "base64 -d /opt/slurm-hybrid/install-slurm.sh.b64 > /opt/slurm-hybrid/install-slurm.sh && chmod +x /opt/slurm-hybrid/install-slurm.sh" ]
+  - [ bash, -lc, "base64 -d /opt/slurm-hybrid/bootstrap-controller.sh.b64 > /opt/slurm-hybrid/bootstrap-controller.sh && chmod +x /opt/slurm-hybrid/bootstrap-controller.sh" ]
+  - [ bash, -lc, "IS_PRIMARY=${is_primary} DB_PASSWORD='${db_password}' SLURM_VERSION=${slurm_version} AWS_COMPUTE_ID=${aws_compute_id} GCP_PROJECT=${gcp_project_id} GCP_ZONE=${gcp_zone} GCP_INSTANCE=${gcp_compute_hostname} /opt/slurm-hybrid/bootstrap-controller.sh" ]

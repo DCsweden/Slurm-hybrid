@@ -1,0 +1,10 @@
+.terraform/
+terraform/backend.hcl
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+gcp-sa.json
+*.pem
+.DS_Store

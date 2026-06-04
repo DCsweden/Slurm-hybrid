@@ -1,0 +1,75 @@
+#!/bin/bash
+# Slurm ResumeProgram — start stopped cloud VMs (AWS EC2 + GCP GCE)
+# Invoked by slurmctld as SlurmUser with node hostlist argument.
+# https://slurm.schedmd.com/power_save.html
+
+set -euo pipefail
+
+NODE_LIST="${1:-}"
+if [[ -z "$NODE_LIST" ]]; then
+  echo "Usage: $0 <hostlist>" >&2
+  exit 1
+fi
+
+CONFIG="/etc/slurm/cloud-nodes.json"
+if [[ ! -f "$CONFIG" ]]; then
+  echo "Missing $CONFIG (instance id / cloud mapping)" >&2
+  exit 1
+fi
+
+if [[ -n "${SLURM_RESUME_FILE:-}" && -f "$SLURM_RESUME_FILE" ]]; then
+  echo "Resume context: $SLURM_RESUME_FILE"
+fi
+
+expand_nodes() {
+  local list="$1"
+  if command -v scontrol >/dev/null 2>&1; then
+    scontrol show hostnames "$list" 2>/dev/null || echo "$list"
+  else
+    echo "$list" | tr ',' '\n' | sed 's/\[.*//'
+  fi
+}
+
+lookup() {
+  local node="$1" field="$2"
+  jq -r --arg n "$node" --arg f "$field" '.[$n][$f] // empty' "$CONFIG"
+}
+
+for node in $(expand_nodes "$NODE_LIST"); do
+  provider=$(lookup "$node" provider)
+  instance_id=$(lookup "$node" instance_id)
+  zone=$(lookup "$node" zone)
+
+  if [[ -z "$provider" || -z "$instance_id" ]]; then
+    echo "No cloud mapping for node $node in $CONFIG" >&2
+    exit 1
+  fi
+
+  echo "Resuming $node ($provider: $instance_id)"
+
+  case "$provider" in
+    aws)
+      aws ec2 start-instances --instance-ids "$instance_id" --output text
+      aws ec2 wait instance-running --instance-ids "$instance_id"
+      ;;
+    gcp)
+      gcloud compute instances start "$instance_id" --zone="${zone}" --quiet
+      ;;
+    *)
+      echo "Unknown provider: $provider" >&2
+      exit 1
+      ;;
+  esac
+
+  # Wait for slurmd registration (optional explicit check)
+  deadline=$((SECONDS + 540))
+  while (( SECONDS < deadline )); do
+    if scontrol show node "$node" 2>/dev/null | grep -q "State=IDLE\|State=ALLOCATED\|State=COMPLETING"; then
+      echo "$node is up"
+      break
+    fi
+    sleep 5
+  done
+done
+
+exit 0
